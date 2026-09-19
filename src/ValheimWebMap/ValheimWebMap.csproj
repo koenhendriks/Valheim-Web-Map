@@ -1,0 +1,76 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net462</TargetFramework>
+    <AssemblyName>ValheimWebMap</AssemblyName>
+    <RootNamespace>ValheimWebMap</RootNamespace>
+    <Version>1.0.0</Version>
+    <BepInExPluginGuid>com.valheimwebmap</BepInExPluginGuid>
+    <BepInExPluginName>Valheim Web Map</BepInExPluginName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <DebugType>none</DebugType>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NuGetAudit>false</NuGetAudit>
+    <!-- Mono ships these; they must not be copied next to the plugin. -->
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <ImplicitlyExpandNETStandardFacades>false</ImplicitlyExpandNETStandardFacades>
+  </PropertyGroup>
+
+  <!--
+    Game assemblies are referenced from a Valheim install. Override with
+    `dotnet build -p:ValheimInstall=/path/to/Valheim` (client) or a dedicated
+    server folder; both layouts are probed.
+  -->
+  <PropertyGroup>
+    <ValheimInstall Condition="'$(ValheimInstall)' == '' And '$(VALHEIM_INSTALL)' != ''">$(VALHEIM_INSTALL)</ValheimInstall>
+    <ValheimInstall Condition="'$(ValheimInstall)' == '' And Exists('$(HOME)/.local/share/Steam/steamapps/common/Valheim')">$(HOME)/.local/share/Steam/steamapps/common/Valheim</ValheimInstall>
+    <ValheimInstall Condition="'$(ValheimInstall)' == '' And Exists('$(HOME)/.steam/steam/steamapps/common/Valheim')">$(HOME)/.steam/steam/steamapps/common/Valheim</ValheimInstall>
+    <ValheimInstall Condition="'$(ValheimInstall)' == '' And Exists('C:\Program Files (x86)\Steam\steamapps\common\Valheim')">C:\Program Files (x86)\Steam\steamapps\common\Valheim</ValheimInstall>
+    <ValheimManaged Condition="Exists('$(ValheimInstall)/valheim_Data/Managed')">$(ValheimInstall)/valheim_Data/Managed</ValheimManaged>
+    <ValheimManaged Condition="'$(ValheimManaged)' == '' And Exists('$(ValheimInstall)/valheim_server_Data/Managed')">$(ValheimInstall)/valheim_server_Data/Managed</ValheimManaged>
+  </PropertyGroup>
+
+  <Target Name="CheckValheimManaged" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="'$(ValheimManaged)' == ''" Text="Valheim install not found. Pass -p:ValheimInstall=&lt;path to Valheim or valheim dedicated server&gt;." />
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="BepInEx.Core" Version="5.4.21" />
+    <PackageReference Include="BepInEx.PluginInfoProps" Version="2.1.0" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="assembly_valheim">
+      <HintPath>$(ValheimManaged)/assembly_valheim.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="assembly_utils">
+      <HintPath>$(ValheimManaged)/assembly_utils.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(ValheimManaged)/UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(ValheimManaged)/UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- The Unity assemblies are built against netstandard 2.1; the compiler needs the same facade the game ships. -->
+    <Reference Include="netstandard">
+      <HintPath>$(ValheimManaged)/netstandard.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="web\**\*" LogicalName="web/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>
