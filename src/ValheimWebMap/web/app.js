@@ -1,0 +1,255 @@
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var el = {
+    world: $('world-name'), clock: $('clock'), render: $('render'), renderText: $('render-text'),
+    renderBar: $('render-bar'), panel: $('panel'), toggle: $('panel-toggle'), count: $('panel-count'),
+    players: $('players'), noPlayers: $('no-players'), explored: $('explored'), coords: $('coords')
+  };
+
+  var map, crs, HALF, info;
+  var tileLayer = null;
+  var tileLayerKey = '';
+  var pendingTileKey = '';
+  var lastTileSwap = 0;
+  var markers = {};
+  var followId = null;
+  var state = { players: [] };
+
+  fetch('api/info').then(function (r) { return r.json(); }).then(init).catch(function (e) {
+    el.world.textContent = 'Could not reach the map server';
+    console.error(e);
+  });
+
+  function init(i) {
+    info = i;
+    HALF = i.mapHalfSize;
+    var scale0 = i.tileSize / (2 * HALF);
+    // Map units are world metres: L.latLng(z, x). North (+z) is up.
+    crs = L.extend({}, L.CRS.Simple, {
+      transformation: new L.Transformation(scale0, i.tileSize / 2, -scale0, i.tileSize / 2)
+    });
+
+    map = L.map('map', {
+      crs: crs,
+      minZoom: 1,
+      maxZoom: i.maxZoom,
+      zoomSnap: 0.25,
+      zoomDelta: 0.5,
+      wheelPxPerZoomLevel: 90,
+      attributionControl: false,
+      maxBounds: [[-HALF * 1.15, -HALF * 1.15], [HALF * 1.15, HALF * 1.15]],
+      maxBoundsViscosity: 0.8
+    });
+    L.control.scale({ imperial: false, maxWidth: 160 }).addTo(map);
+
+    if (!applyHash()) map.setView([0, 0], 2);
+
+    map.on('moveend zoomend', updateHash);
+    map.on('dragstart', function () { setFollow(null); });
+    map.on('mousemove', function (e) {
+      el.coords.textContent = 'x ' + Math.round(e.latlng.lng) + '  z ' + Math.round(e.latlng.lat);
+    });
+    map.on('mouseout', function () { el.coords.textContent = ''; });
+
+    el.toggle.addEventListener('click', function () { el.panel.classList.toggle('open'); });
+    window.addEventListener('hashchange', function () { if (!suppressHash) applyHash(); });
+
+    poll();
+    setInterval(poll, Math.max(1000, (i.updateInterval || 1) * 1000));
+  }
+
+  // --- tiles -------------------------------------------------------------
+
+  function ensureTiles(s) {
+    if (!s.mapReady) return;
+    var key = s.mapId + ':' + s.exploreVersion;
+    if (key === tileLayerKey || key === pendingTileKey) return;
+
+    // The first layer goes up right away; later ones only when the terrain picture changed
+    // (new resolution) or after a pause, so panning is not interrupted by constant reloads.
+    var now = Date.now();
+    var atlasChanged = !tileLayer || tileLayer.options.mapId !== s.mapId;
+    if (!atlasChanged && now - lastTileSwap < 15000) return;
+
+    pendingTileKey = key;
+    lastTileSwap = now;
+    var layer = L.tileLayer('tiles/{z}/{x}/{y}.png?v={mapId}-{v}', {
+      tileSize: info.tileSize,
+      minZoom: 0,
+      maxZoom: info.maxZoom,
+      maxNativeZoom: s.nativeZoom,
+      noWrap: true,
+      keepBuffer: 3,
+      updateWhenZooming: false,
+      bounds: [[-HALF, -HALF], [HALF, HALF]],
+      mapId: s.mapId,
+      v: s.exploreVersion,
+      className: 'map-tiles'
+    });
+    var old = tileLayer;
+    var done = false;
+    var finish = function () {
+      if (done) return;
+      done = true;
+      if (old) map.removeLayer(old);
+      tileLayer = layer;
+      tileLayerKey = key;
+      pendingTileKey = '';
+      layer.bringToBack();
+    };
+    layer.once('load', finish);
+    setTimeout(finish, 4000);
+    layer.addTo(map);
+  }
+
+  // --- players -----------------------------------------------------------
+
+  function poll() {
+    fetch('api/state', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (s) {
+      state = s;
+      renderStatus(s);
+      ensureTiles(s);
+      renderPlayers(s.players || []);
+    }).catch(function () {
+      el.world.textContent = 'Connection lost…';
+    });
+  }
+
+  function renderStatus(s) {
+    el.world.textContent = s.world || 'Waiting for the world to load…';
+    if (typeof s.day === 'number') {
+      var mins = Math.floor((s.timeOfDay || 0) * 24 * 60);
+      var hh = String(Math.floor(mins / 60)).padStart(2, '0');
+      var mm = String(mins % 60).padStart(2, '0');
+      el.clock.textContent = 'Day ' + s.day + ' · ' + hh + ':' + mm;
+    } else {
+      el.clock.textContent = '';
+    }
+    var rendering = s.world && (!s.mapReady || s.renderProgress < 1) && !s.renderError;
+    el.render.classList.toggle('hidden', !rendering);
+    if (rendering) {
+      var pct = Math.round((s.renderProgress || 0) * 100);
+      el.renderText.textContent = s.mapReady ? 'Sharpening map… ' + pct + '%' : 'Rendering world map… ' + pct + '%';
+      el.renderBar.style.width = pct + '%';
+    }
+    if (s.renderError) {
+      el.render.classList.remove('hidden');
+      el.renderText.textContent = 'Map render failed, see server log';
+      el.renderBar.style.width = '0%';
+    }
+    el.explored.textContent = typeof s.exploredPercent === 'number' ? s.exploredPercent.toFixed(1) + '% explored' : '';
+  }
+
+  function renderPlayers(players) {
+    var seen = {};
+    el.count.textContent = players.length;
+    el.noPlayers.classList.toggle('hidden', players.length > 0);
+
+    players.sort(function (a, b) {
+      if (a.visible !== b.visible) return a.visible ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    var frag = document.createDocumentFragment();
+    players.forEach(function (p) {
+      var key = String(p.id) + ':' + p.name;
+      seen[key] = true;
+      var color = colorFor(p.name);
+      var li = document.createElement('li');
+      li.style.setProperty('--c', color);
+      li.className = (p.visible ? '' : 'hidden-pos') + (key === followId ? ' following' : '');
+      var sub = p.visible ? (p.biome || '') + ' · ' + Math.round(p.x) + ', ' + Math.round(p.z) : 'position hidden';
+      li.innerHTML = '<span class="dot"></span><span class="name"></span>' +
+        '<span class="follow">' + (key === followId ? 'following' : '') + '</span>' +
+        '<span class="sub"></span>';
+      li.querySelector('.name').textContent = p.name;
+      li.querySelector('.sub').textContent = sub;
+      if (p.visible) {
+        li.addEventListener('click', function () {
+          setFollow(key === followId ? null : key);
+          map.flyTo([p.z, p.x], Math.max(map.getZoom(), 4), { duration: 0.8 });
+          if (window.innerWidth <= 720) el.panel.classList.remove('open');
+        });
+      }
+      frag.appendChild(li);
+
+      if (p.visible) {
+        updateMarker(key, p, color);
+      } else if (markers[key]) {
+        map.removeLayer(markers[key]);
+        delete markers[key];
+      }
+    });
+    el.players.innerHTML = '';
+    el.players.appendChild(frag);
+
+    Object.keys(markers).forEach(function (key) {
+      if (!seen[key]) {
+        map.removeLayer(markers[key]);
+        delete markers[key];
+      }
+    });
+
+    if (followId && !seen[followId]) setFollow(null);
+    if (followId && markers[followId]) {
+      map.panTo(markers[followId].getLatLng(), { animate: true, duration: 0.9 });
+    }
+  }
+
+  function updateMarker(key, p, color) {
+    var latlng = [p.z, p.x];
+    var m = markers[key];
+    if (!m) {
+      var icon = L.divIcon({
+        className: 'player-marker',
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+        html: '<div class="pm"><div class="pm-arrow"></div><div class="pm-dot"></div><div class="pm-label"></div></div>'
+      });
+      m = L.marker(latlng, { icon: icon, zIndexOffset: 1000, keyboard: false });
+      m.on('click', function () { setFollow(key === followId ? null : key); });
+      m.addTo(map);
+      markers[key] = m;
+    } else {
+      m.setLatLng(latlng);
+    }
+    var root = m.getElement() && m.getElement().querySelector('.pm');
+    if (root) {
+      root.style.setProperty('--c', color);
+      root.style.setProperty('--yaw', Math.round(p.yaw || 0) + 'deg');
+      root.classList.toggle('following', key === followId);
+      root.querySelector('.pm-label').textContent = p.name;
+      root.title = p.name + (p.biome ? ' · ' + p.biome : '');
+    }
+  }
+
+  function setFollow(key) {
+    followId = key;
+    renderPlayers(state.players || []);
+  }
+
+  function colorFor(name) {
+    var h = 0;
+    for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return 'hsl(' + (h % 360) + ', 70%, 60%)';
+  }
+
+  // --- URL hash: #x,z,zoom -------------------------------------------------
+
+  var suppressHash = false;
+  function updateHash() {
+    var c = map.getCenter();
+    suppressHash = true;
+    history.replaceState(null, '', '#' + Math.round(c.lng) + ',' + Math.round(c.lat) + ',' + map.getZoom().toFixed(2));
+    setTimeout(function () { suppressHash = false; }, 0);
+  }
+
+  function applyHash() {
+    var m = /^#(-?\d+),(-?\d+),(\d+(?:\.\d+)?)$/.exec(location.hash);
+    if (!m) return false;
+    map.setView([+m[2], +m[1]], +m[3]);
+    return true;
+  }
+})();

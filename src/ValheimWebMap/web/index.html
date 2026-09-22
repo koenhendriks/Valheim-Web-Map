@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Valheim Map</title>
+  <link rel="stylesheet" href="leaflet.css">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <div id="map"></div>
+
+  <div id="status" class="status">
+    <span id="world-name">Connecting…</span>
+    <span id="clock" class="clock"></span>
+    <div id="render" class="render hidden">
+      <span id="render-text">Rendering world map…</span>
+      <div class="bar"><div id="render-bar"></div></div>
+    </div>
+  </div>
+
+  <button id="panel-toggle" class="panel-toggle" type="button" aria-label="Players">
+    <span id="panel-count">0</span>
+  </button>
+
+  <aside id="panel" class="panel">
+    <header>
+      <h1>Players</h1>
+      <span id="explored" class="muted"></span>
+    </header>
+    <ul id="players"></ul>
+    <p id="no-players" class="muted">Nobody online.</p>
+    <footer class="muted">Only players who enabled <em>Visible to other players</em> on their in-game map are shown.</footer>
+  </aside>
+
+  <div id="coords" class="coords"></div>
+
+  <script src="leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
