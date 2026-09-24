@@ -1,0 +1,135 @@
+# Valheim Web Map
+
+A server-side [BepInEx](https://github.com/BepInEx/BepInEx) plugin for Valheim 1.0 that serves a
+live, interactive web map of your world. Players install nothing.
+
+- **Default world only.** The map is rendered from the game's world generator: biomes, terrain,
+  rivers, forests and water, exactly as a fresh world looks. Buildings and terraforming are not shown.
+- **Fog of war.** Only ground that players have actually walked is visible. Exploration is tracked
+  on the server and saved between restarts; unexplored terrain never leaves the server.
+- **Live players.** Players who turned on *Visible to other players* on their in-game map are drawn
+  with their name, facing direction and biome, and updated every second. Everyone else is listed as
+  online with their position hidden.
+- **Familiar controls.** Scroll or pinch to zoom, drag to pan, double-click to zoom in, click a
+  player to follow them. Works on phones. The URL keeps the view (`#x,z,zoom`) so it can be shared.
+- **Existing worlds work.** Zones in the save file are only generated near players, so on first start
+  the plugin reveals everything anyone had already visited before the mod was installed.
+- **No authentication.** Meant to sit behind your own reverse proxy. The web server only starts
+  when the process is the game server, so the plugin is inert if it ends up on a client.
+
+Built and tested against Valheim 1.0.16 (dedicated server, Linux) with BepInExPack Valheim 5.4.2351.
+
+## Install
+
+1. Install [BepInExPack Valheim](https://thunderstore.io/c/valheim/p/denikson/BepInExPack_Valheim/)
+   on the **server**.
+2. Download the release zip and copy `plugins/ValheimWebMap/ValheimWebMap.dll` to
+   `<server>/BepInEx/plugins/ValheimWebMap/ValheimWebMap.dll`.
+3. Start the server once. The config is written to `BepInEx/config/com.valheimwebmap.cfg`.
+4. Open `http://<server-ip>:3000/`.
+
+Startup log lines to expect:
+
+```
+[Info   :Valheim Web Map] Web map listening on http://*:3000/
+[Info   :Valheim Web Map] Revealed 412 previously visited zones (3.1% of the world explored)
+[Info   :Valheim Web Map] Tracking world 'Midgard'
+[Info   :Valheim Web Map] Rendered preview world map (1024 px) in 0.4s; rendering 4096 px map with 4 thread(s)
+[Info   :Valheim Web Map] Rendered world map (4096 px) in 25.3s
+```
+
+The map is usable right away at preview quality; the full-resolution render takes from a few
+seconds to a couple of minutes depending on the CPU and is then cached on disk, so later starts are
+instant. Map data lives in `BepInEx/config/ValheimWebMap/<world name>/`:
+
+| File | Purpose |
+| --- | --- |
+| `basemap_<resolution>.bin` | Cached world render. Redone automatically after a game update. |
+| `explored.bin` | Fog-of-war state. Delete it to start over with a black map. |
+
+### Docker (lloesche/valheim-server)
+
+With `BEPINEX=true`, BepInEx lives at `/opt/valheim/bepinex/BepInEx` on the data volume. Put the
+plugin in `/opt/valheim/bepinex/BepInEx/plugins/ValheimWebMap/` and publish the port
+(`-p 3000:3000/tcp`). The config and map data end up under `/config/bepinex/`.
+
+### Reverse proxy
+
+The page uses relative URLs, so it can be served from a sub-path as long as the path ends in a
+slash (`https://example.com/valheim/` → `http://server:3000/`). Example for nginx:
+
+```nginx
+location /valheim/ {
+    proxy_pass http://127.0.0.1:3000/;
+    proxy_set_header Host $host;
+}
+```
+
+Add whatever authentication you want at the proxy; the plugin has none.
+
+## Configuration
+
+`BepInEx/config/com.valheimwebmap.cfg`, read at startup.
+
+| Section | Key | Default | Meaning |
+| --- | --- | --- | --- |
+| Web | `Port` | `3000` | Listening port. |
+| Web | `Host` | `*` | Bind address. On Windows a non-admin process may need `localhost` or a specific IP, or a `netsh http add urlacl` reservation. |
+| Map | `Resolution` | `4096` | Pixels across the world render (`1024`, `2048`, `4096` or `8192`). 4096 is 5 m per pixel; the in-game map is 12 m per pixel. |
+| Map | `RenderThreads` | `0` | Threads for the startup render; `0` uses half the cores. |
+| Map | `MaxZoom` | `7` | Deepest browser zoom level. Levels beyond the native resolution are upscaled. |
+| Exploration | `ExploreRadius` | `100` | Metres revealed around each player, same as the in-game map. |
+| Exploration | `RevealGeneratedZones` | `true` | Reveal zones already generated in the save at startup. |
+| Exploration | `RevealGeneratedZonesMargin` | `1` | The game generates zones a bit further out than the map reveals; a zone counts only if all zones within this many zones are generated too. |
+| Players | `UpdateInterval` | `1` | Seconds between position samples. |
+| Storage | `DataDirectory` | *(empty)* | Where map data is stored. Empty means `BepInEx/config/ValheimWebMap/<world>`. |
+| Storage | `SaveInterval` | `60` | Seconds between saves of the exploration data when it changed. |
+
+Exploration is recorded for every connected player, whether or not they share their position; only
+the live marker respects the in-game setting.
+
+## HTTP API
+
+| Path | Content |
+| --- | --- |
+| `GET /` | The map page. |
+| `GET /api/info` | World name, map extent, zoom limits. |
+| `GET /api/state` | Render progress, exploration version, in-game day and time, online players. |
+| `GET /tiles/{z}/{x}/{y}.png` | 256 px map tiles with fog applied. |
+
+The world seed is deliberately not exposed.
+
+## Building
+
+Requires the .NET SDK (any recent version; the plugin targets .NET Framework 4.6.2, which is what
+the game's Mono runtime runs) and a Valheim install to reference the game assemblies.
+
+```sh
+./build.sh                                   # auto-detects a Steam install in the usual places
+./build.sh -p:ValheimInstall=/path/to/valheim_server   # or point at a client/server folder
+```
+
+Output: `dist/ValheimWebMap-<version>.zip`. To change the page, edit `src/ValheimWebMap/web/`; the
+files are embedded in the DLL. A `web/` folder next to the DLL on the server overrides the embedded
+files, handy for tweaking without rebuilding.
+
+### How it works
+
+- No Harmony patches. The plugin polls `ZNet` from a `MonoBehaviour.Update` and starts once the
+  server has loaded a world.
+- The world render calls `WorldGenerator.GetBiome` / `GetBiomeHeight` from worker threads, like the
+  game's own heightmap builder does. Hillshade, water depth, shoreline and forest density are
+  derived from the same functions the in-game minimap uses.
+- Fog is a 2048×2048 grid (10 m cells) revealed around player positions and persisted with
+  zlib. Tiles are composited with the fog on the server, so unexplored terrain is never sent.
+- Players come from `ZNet.GetPeers()`; the position is read from the player's ZDO and the
+  *Visible to other players* flag from `ZNetPeer.m_publicRefPos`.
+
+## Credits
+
+Inspired by [valheim-webmap](https://github.com/f00d4tehg0dz/valheim-webmap) by kylepaulsen and
+f00d4tehg0dz. Map rendering in the browser by [Leaflet](https://leafletjs.com/) (BSD-2-Clause).
+
+## License
+
+MIT, see [LICENSE](LICENSE).
