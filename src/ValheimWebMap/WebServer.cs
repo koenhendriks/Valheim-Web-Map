@@ -36,7 +36,7 @@ namespace ValheimWebMap
         private readonly ManualLogSource _log;
         private readonly IMapApi _api;
         private readonly string _overrideDir;
-        private readonly string _staticETag;
+        private readonly Dictionary<string, string> _etags = new Dictionary<string, string>();
         private HttpListener _listener;
         private volatile bool _stopping;
 
@@ -46,7 +46,6 @@ namespace ValheimWebMap
             _api = api;
             string pluginDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             _overrideDir = pluginDir != null ? Path.Combine(pluginDir, "web") : null;
-            _staticETag = "\"" + MyPluginInfo.PLUGIN_VERSION + "\"";
         }
 
         public void Start(string host, int port)
@@ -200,7 +199,25 @@ namespace ValheimWebMap
                     }
                 }
             }
-            SendBytes(req, res, data, contentType, "public, max-age=300", _staticETag);
+            // Content-based so a browser always sees new files after a plugin update, even within the same version.
+            string etag;
+            lock (_etags)
+            {
+                if (!_etags.TryGetValue(name, out etag))
+                {
+                    etag = "\"" + Fnv1a64(data).ToString("x16") + "\"";
+                    _etags[name] = etag;
+                }
+            }
+            string cache = name == "index.html" ? "no-cache" : "public, max-age=300";
+            SendBytes(req, res, data, contentType, cache, etag);
+        }
+
+        private static ulong Fnv1a64(byte[] data)
+        {
+            ulong h = 14695981039346656037UL;
+            foreach (byte b in data) h = (h ^ b) * 1099511628211UL;
+            return h;
         }
 
         private static void SendText(HttpListenerRequest req, HttpListenerResponse res, string text, string contentType, string cacheControl, string etag)
