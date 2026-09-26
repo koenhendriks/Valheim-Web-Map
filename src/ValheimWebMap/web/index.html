@@ -26,12 +26,22 @@
 
   <aside id="panel" class="panel">
     <header>
-      <h1>Players</h1>
+      <nav class="tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="online" role="tab">Online</button>
+        <button type="button" class="tab" data-tab="history" role="tab">History</button>
+      </nav>
       <span id="explored" class="muted"></span>
     </header>
-    <ul id="players"></ul>
-    <p id="no-players" class="muted">Nobody online.</p>
-    <footer class="muted">Only players who enabled <em>Visible to other players</em> on their in-game map are shown.</footer>
+    <section id="tab-online" class="tab-page active">
+      <ul id="players"></ul>
+      <p id="no-players" class="muted">Nobody online.</p>
+      <footer class="muted">Only players who enabled <em>Visible to other players</em> on their in-game map are shown.</footer>
+    </section>
+    <section id="tab-history" class="tab-page">
+      <ul id="history"></ul>
+      <p id="no-history" class="muted">No sessions recorded yet.</p>
+      <footer class="muted">Sessions, play time and deaths per player, recorded by the server.</footer>
+    </section>
   </aside>
 
   <div id="coords" class="coords"></div>

@@ -5,8 +5,11 @@
   var el = {
     world: $('world-name'), clock: $('clock'), render: $('render'), renderText: $('render-text'),
     renderBar: $('render-bar'), panel: $('panel'), toggle: $('panel-toggle'), count: $('panel-count'),
-    players: $('players'), noPlayers: $('no-players'), explored: $('explored'), coords: $('coords')
+    players: $('players'), noPlayers: $('no-players'), explored: $('explored'), coords: $('coords'),
+    history: $('history'), noHistory: $('no-history')
   };
+  var activeTab = 'online';
+  var expanded = {};
 
   var map, crs, HALF, info;
   var tileLayer = null;
@@ -54,6 +57,11 @@
     map.on('mouseout', function () { el.coords.textContent = ''; });
 
     el.toggle.addEventListener('click', function () { el.panel.classList.toggle('open'); });
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (btn) {
+      btn.addEventListener('click', function () { showTab(btn.getAttribute('data-tab')); });
+    });
+    pollHistory();
+    setInterval(pollHistory, 15000);
     window.addEventListener('hashchange', function () { if (!suppressHash) applyHash(); });
 
     poll();
@@ -160,12 +168,15 @@
       var li = document.createElement('li');
       li.style.setProperty('--c', color);
       li.className = (p.visible ? '' : 'hidden-pos') + (key === followId ? ' following' : '');
-      var sub = p.visible ? (p.biome || '') + ' · ' + Math.round(p.x) + ', ' + Math.round(p.z) : 'position hidden';
+      var where = p.dead ? 'dead' : p.visible ? (p.biome || '') + ' · ' + Math.round(p.x) + ', ' + Math.round(p.z) : 'position hidden';
+      var extra = [];
+      if (p.since) extra.push('online ' + duration((Date.now() - Date.parse(p.since)) / 1000));
+      if (typeof p.deaths === 'number' && p.deaths > 0) extra.push(p.deaths + (p.deaths === 1 ? ' death' : ' deaths'));
       li.innerHTML = '<span class="dot"></span><span class="name"></span>' +
-        '<span class="follow">' + (key === followId ? 'following' : '') + '</span>' +
+        '<span class="follow">' + (key === followId ? 'following' : p.dead ? '<span class="skull">☠</span>' : '') + '</span>' +
         '<span class="sub"></span>';
       li.querySelector('.name').textContent = p.name;
-      li.querySelector('.sub').textContent = sub;
+      li.querySelector('.sub').textContent = where + (extra.length ? ' · ' + extra.join(' · ') : '');
       if (p.visible) {
         li.addEventListener('click', function () {
           setFollow(key === followId ? null : key);
@@ -223,6 +234,87 @@
       root.querySelector('.pm-label').textContent = p.name;
       root.title = p.name + (p.biome ? ' · ' + p.biome : '');
     }
+  }
+
+  // --- history -----------------------------------------------------------
+
+  function showTab(name) {
+    activeTab = name;
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
+      b.classList.toggle('active', b.getAttribute('data-tab') === name);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.tab-page'), function (pg) {
+      pg.classList.toggle('active', pg.id === 'tab-' + name);
+    });
+    if (name === 'history') pollHistory();
+  }
+
+  function pollHistory() {
+    if (activeTab !== 'history' && el.history.childElementCount > 0) return;
+    fetch('api/history', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (h) {
+      renderHistory(h.players || []);
+    }).catch(function () {});
+  }
+
+  function renderHistory(players) {
+    el.noHistory.classList.toggle('hidden', players.length > 0);
+    var frag = document.createDocumentFragment();
+    players.forEach(function (p) {
+      var li = document.createElement('li');
+      li.className = 'history';
+      li.innerHTML = '<span class="name"></span><span class="online-dot" style="display:none"></span>' +
+        '<span class="stats"></span>';
+      li.querySelector('.name').textContent = p.name;
+      if (p.online) li.querySelector('.online-dot').style.display = '';
+      var when = p.online ? 'online now' : p.lastSeen ? 'last seen ' + relative(p.lastSeen) : '';
+      li.querySelector('.stats').textContent =
+        p.sessions + (p.sessions === 1 ? ' session' : ' sessions') + ' · ' + duration(p.playSeconds) + ' played · ' +
+        p.deaths + (p.deaths === 1 ? ' death' : ' deaths') + (when ? ' · ' + when : '');
+      if (expanded[p.name] && p.recent && p.recent.length) {
+        var ul = document.createElement('ul');
+        ul.className = 'sessions';
+        p.recent.forEach(function (s) {
+          var row = document.createElement('li');
+          row.innerHTML = '<span class="date"></span><span class="dur"></span><span class="d"></span>';
+          row.querySelector('.date').textContent = formatDate(s.start) + (s.character !== p.name ? ' (' + s.character + ')' : '');
+          row.querySelector('.dur').textContent = duration(s.seconds);
+          row.querySelector('.d').textContent = s.deaths ? '☠ ' + s.deaths : '';
+          ul.appendChild(row);
+        });
+        li.appendChild(ul);
+      }
+      li.addEventListener('click', function () {
+        expanded[p.name] = !expanded[p.name];
+        renderHistory(players);
+      });
+      frag.appendChild(li);
+    });
+    el.history.innerHTML = '';
+    el.history.appendChild(frag);
+  }
+
+  function duration(seconds) {
+    seconds = Math.max(0, Math.floor(seconds || 0));
+    var h = Math.floor(seconds / 3600), m = Math.floor((seconds % 3600) / 60);
+    if (h >= 24) { var d = Math.floor(h / 24); return d + 'd ' + (h % 24) + 'h'; }
+    if (h > 0) return h + 'h ' + m + 'm';
+    if (m > 0) return m + 'm';
+    return seconds + 's';
+  }
+
+  function relative(iso) {
+    var s = (Date.now() - Date.parse(iso)) / 1000;
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + ' min ago';
+    if (s < 86400) return Math.floor(s / 3600) + ' h ago';
+    var d = Math.floor(s / 86400);
+    return d === 1 ? 'yesterday' : d + ' days ago';
+  }
+
+  function formatDate(iso) {
+    var d = new Date(iso);
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' +
+      d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   }
 
   function setFollow(key) {

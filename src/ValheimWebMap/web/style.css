@@ -97,7 +97,20 @@ html, body {
   justify-content: space-between;
   padding: 10px 14px 6px;
 }
-.panel h1 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: 0.02em; }
+.tabs { display: flex; gap: 4px; }
+.tab {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: 600 13px var(--font);
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); background: rgba(255,255,255,0.08); }
+.tab-page { display: none; flex-direction: column; min-height: 0; }
+.tab-page.active { display: flex; }
 .panel ul { list-style: none; margin: 0; padding: 0 6px; overflow-y: auto; }
 .panel li {
   display: grid;
@@ -116,6 +129,16 @@ html, body {
 .panel li .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .panel li .sub { grid-column: 2 / span 2; color: var(--muted); font-size: 12px; margin-top: -2px; }
 .panel li .follow { color: var(--accent); font-size: 12px; }
+.panel li .skull { color: #e06060; font-size: 12px; }
+.panel li.history { grid-template-columns: 1fr auto; }
+.panel li.history .stats { grid-column: 1 / span 2; color: var(--muted); font-size: 12px; }
+.panel li.history .online-dot { width: 8px; height: 8px; border-radius: 50%; background: #5fd27a; }
+.panel li.history .sessions { grid-column: 1 / span 2; margin: 4px 0 0; padding: 0; list-style: none; font-size: 12px; }
+.panel li.history .sessions li { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; padding: 3px 0; cursor: default; color: var(--muted); }
+.panel li.history .sessions li:hover { background: none; }
+.panel li.history .sessions .dur { color: var(--text); font-variant-numeric: tabular-nums; }
+.panel #no-history { margin: 0; padding: 4px 14px 12px; }
+.panel #no-history.hidden { display: none; }
 .panel footer { padding: 8px 14px 10px; font-size: 11px; line-height: 1.4; border-top: 1px solid var(--panel-border); }
 .panel #no-players { margin: 0; padding: 4px 14px 12px; }
 .panel #no-players.hidden { display: none; }
