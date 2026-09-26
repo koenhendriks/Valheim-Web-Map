@@ -24,6 +24,7 @@ namespace ValheimWebMap
         private readonly string _exploredPath;
         private readonly ExploredMask _mask;
         private readonly TileService _tiles;
+        private readonly PlayerHistory _history;
         private readonly List<PlayerEntry> _players = new List<PlayerEntry>();
         private readonly Thread _renderThread;
         private volatile bool _stop;
@@ -63,6 +64,18 @@ namespace ValheimWebMap
 
             _tiles = new TileService(_mask, HalfSize, cfg.MaxZoom.Value);
             if (cfg.RevealGeneratedZones.Value) RevealGeneratedZones();
+
+            string historyPath = Path.Combine(_dataDir, "history.json");
+            try
+            {
+                _history = new PlayerHistory(historyPath);
+                if (_history.PlayerCount > 0) _log.LogInfo("Loaded play history for " + _history.PlayerCount + " player(s)");
+            }
+            catch (Exception e)
+            {
+                _log.LogWarning("Could not read " + historyPath + ": " + e.Message + ". Starting a new history.");
+                _history = new PlayerHistory(historyPath + ".new");
+            }
 
             _stateJson = BuildState();
             _renderThread = new Thread(RenderWorker)
@@ -188,10 +201,12 @@ namespace ValheimWebMap
             float radius = _cfg.ExploreRadius.Value;
             foreach (PlayerEntry p in _players)
             {
-                // Dead or not yet spawned players sit at the origin; the game does not reveal there either.
-                if (p.Position.sqrMagnitude < 1f) continue;
+                // Players without a spawned character report the origin; the game does not reveal there either.
+                if (!p.HasCharacter || p.Dead || p.Position.sqrMagnitude < 1f) continue;
                 _mask.Reveal(p.Position.x, p.Position.z, radius);
             }
+            EnvMan env = EnvMan.instance;
+            _history.Update(_players, DateTime.UtcNow, env != null ? env.GetDay() : 0);
             _stateJson = BuildState();
         }
 
@@ -221,6 +236,15 @@ namespace ValheimWebMap
                 j.Prop("id", p.Id);
                 j.Prop("name", p.Name);
                 j.Prop("visible", p.Visible);
+                j.Prop("dead", p.Dead);
+                DateTime since;
+                int sessionDeaths, totalDeaths;
+                if (_history.TryGetLive(p.Id, out since, out sessionDeaths, out totalDeaths))
+                {
+                    j.Prop("since", PlayerHistory.Iso(since));
+                    j.Prop("sessionDeaths", sessionDeaths);
+                    j.Prop("deaths", totalDeaths);
+                }
                 if (p.Visible)
                 {
                     j.Prop("x", p.Position.x, 1);
@@ -237,17 +261,31 @@ namespace ValheimWebMap
         }
 
         public string StateJson => _stateJson;
+        public string HistoryJson => _history.Json;
 
         public void SaveIfDirty()
         {
-            if (!_mask.Dirty) return;
-            try
+            if (_mask.Dirty)
             {
-                _mask.Save(_exploredPath);
+                try
+                {
+                    _mask.Save(_exploredPath);
+                }
+                catch (Exception e)
+                {
+                    _log.LogWarning("Could not save exploration data: " + e.Message);
+                }
             }
-            catch (Exception e)
+            if (_history.Dirty)
             {
-                _log.LogWarning("Could not save exploration data: " + e.Message);
+                try
+                {
+                    _history.Save();
+                }
+                catch (Exception e)
+                {
+                    _log.LogWarning("Could not save play history: " + e.Message);
+                }
             }
         }
 

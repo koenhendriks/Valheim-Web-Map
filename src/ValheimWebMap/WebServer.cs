@@ -12,6 +12,7 @@ namespace ValheimWebMap
     {
         string InfoJson();
         string StateJson();
+        string HistoryJson();
         bool TryGetTile(int z, int x, int y, out byte[] png, out string etag);
     }
 
@@ -130,6 +131,9 @@ namespace ValheimWebMap
                     return;
                 case "/api/state":
                     SendText(req, res, _api.StateJson(), "application/json; charset=utf-8", "no-store", null);
+                    return;
+                case "/api/history":
+                    SendText(req, res, _api.HistoryJson(), "application/json; charset=utf-8", "no-store", null);
                     return;
                 case "/":
                     path = "/index.html";

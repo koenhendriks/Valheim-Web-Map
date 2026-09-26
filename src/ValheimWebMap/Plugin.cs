@@ -119,6 +119,12 @@ namespace ValheimWebMap
             return s != null ? s.StateJson : _emptyState;
         }
 
+        public string HistoryJson()
+        {
+            MapSession s = _session;
+            return s != null ? s.HistoryJson : "{\"players\":[]}";
+        }
+
         public bool TryGetTile(int z, int x, int y, out byte[] png, out string etag)
         {
             MapSession s = _session;

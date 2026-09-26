@@ -62,6 +62,10 @@
       <HintPath>$(ValheimManaged)/UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(ValheimManaged)/Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <!-- The Unity assemblies are built against netstandard 2.1; the compiler needs the same facade the game ships. -->
     <Reference Include="netstandard">
       <HintPath>$(ValheimManaged)/netstandard.dll</HintPath>
