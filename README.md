@@ -12,6 +12,9 @@ live, interactive web map of your world. Players install nothing.
   online with their position hidden.
 - **Familiar controls.** Scroll or pinch to zoom, drag to pan, double-click to zoom in, click a
   player to follow them. Works on phones. The URL keeps the view (`#x,z,zoom`) so it can be shared.
+- **Play history.** Every connection is recorded as a session with its length and the deaths
+  that happened in it, so the History tab shows how often, how long and how deadly each player's
+  time on the server has been. Nothing is needed from the clients.
 - **Existing worlds work.** Zones in the save file are only generated near players, so on first start
   the plugin reveals everything anyone had already visited before the mod was installed.
 - **No authentication.** Meant to sit behind your own reverse proxy. The web server only starts
@@ -46,6 +49,7 @@ instant. Map data lives in `BepInEx/config/ValheimWebMap/<world name>/`:
 | --- | --- |
 | `basemap_<resolution>.bin` | Cached world render. Redone automatically after a game update. |
 | `explored.bin` | Fog-of-war state. Delete it to start over with a black map. |
+| `history.json` | Play sessions and deaths per player (keyed by Steam or PlayFab id). Human readable. |
 
 ### Docker (lloesche/valheim-server)
 
@@ -88,13 +92,22 @@ Add whatever authentication you want at the proxy; the plugin has none.
 Exploration is recorded for every connected player, whether or not they share their position; only
 the live marker respects the in-game setting.
 
+### Sessions and deaths
+
+A session starts when a connection has a player name and ends when that connection goes away, so
+the respawn pause after dying does not split it. Deaths are detected from the `dead` flag the game
+sets on the player's character for the ten seconds before the body is removed, with a respawn
+(new character id on the same connection) as a fallback. A player who dies and logs out before
+respawning is still counted. Death positions are not stored.
+
 ## HTTP API
 
 | Path | Content |
 | --- | --- |
 | `GET /` | The map page. |
 | `GET /api/info` | World name, map extent, zoom limits. |
-| `GET /api/state` | Render progress, exploration version, in-game day and time, online players. |
+| `GET /api/state` | Render progress, exploration version, in-game day and time, online players with session start and death counts. |
+| `GET /api/history` | Per player: session count, total play time, deaths, last seen and the 30 most recent sessions. |
 | `GET /tiles/{z}/{x}/{y}.png` | 256 px map tiles with fog applied. |
 
 The world seed is deliberately not exposed.
@@ -124,6 +137,8 @@ files, handy for tweaking without rebuilding.
   zlib. Tiles are composited with the fog on the server, so unexplored terrain is never sent.
 - Players come from `ZNet.GetPeers()`; the position is read from the player's ZDO and the
   *Visible to other players* flag from `ZNetPeer.m_publicRefPos`.
+- Sessions and deaths are derived from the same per-second peer snapshot and saved with
+  Newtonsoft.Json, which the game ships.
 
 ## Credits
 
