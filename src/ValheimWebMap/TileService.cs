@@ -22,16 +22,20 @@ namespace ValheimWebMap
         private readonly ExploredMask _mask;
         private readonly float _half;
         private readonly int _maxZoom;
+        // Counters restart with the server, so ETags carry a per-startup epoch or browsers would
+        // revalidate stale tiles from the previous run as unchanged.
+        private readonly string _epoch;
         private readonly object _lock = new object();
         private readonly Dictionary<long, CachedTile> _cache = new Dictionary<long, CachedTile>();
         private readonly byte[] _fogPng;
         private volatile MapAtlas _atlas;
 
-        public TileService(ExploredMask mask, float halfSize, int maxZoom)
+        public TileService(ExploredMask mask, float halfSize, int maxZoom, string epoch)
         {
             _mask = mask;
             _half = halfSize;
             _maxZoom = maxZoom;
+            _epoch = epoch;
             var fog = new byte[T * T * 3];
             for (int i = 0; i < T * T; i++)
             {
@@ -71,7 +75,7 @@ namespace ValheimWebMap
             if (!_mask.AnyExplored(minX - bleed, minZ - bleed, maxX + bleed, maxZ + bleed))
             {
                 png = _fogPng;
-                etag = "\"fog\"";
+                etag = "\"" + _epoch + "-fog\"";
                 return true;
             }
 
@@ -90,7 +94,7 @@ namespace ValheimWebMap
 
             byte[] rgb = Compose(atlas, z, x, y, mpp, minX, maxZ);
             png = PngEncoder.EncodeRgb(rgb, T, T);
-            etag = "\"" + atlas.Id + "-" + regionVersion + "\"";
+            etag = "\"" + _epoch + "-" + atlas.Id + "-" + regionVersion + "\"";
             lock (_lock)
             {
                 if (_cache.Count > 4096) _cache.Clear();

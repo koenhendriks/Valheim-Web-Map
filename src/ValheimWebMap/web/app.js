@@ -72,18 +72,18 @@
 
   function ensureTiles(s) {
     if (!s.mapReady) return;
-    var key = s.mapId + ':' + s.exploreVersion;
+    var key = s.epoch + ':' + s.mapId + ':' + s.exploreVersion;
     if (key === tileLayerKey || key === pendingTileKey) return;
 
     // The first layer goes up right away; later ones only when the terrain picture changed
     // (new resolution) or after a pause, so panning is not interrupted by constant reloads.
     var now = Date.now();
-    var atlasChanged = !tileLayer || tileLayer.options.mapId !== s.mapId;
+    var atlasChanged = !tileLayer || tileLayer.options.mapId !== s.mapId || tileLayer.options.epoch !== s.epoch;
     if (!atlasChanged && now - lastTileSwap < 15000) return;
 
     pendingTileKey = key;
     lastTileSwap = now;
-    var layer = L.tileLayer('tiles/{z}/{x}/{y}.png?v={mapId}-{v}', {
+    var layer = L.tileLayer('tiles/{z}/{x}/{y}.png?v={epoch}-{mapId}-{v}', {
       tileSize: info.tileSize,
       minZoom: 0,
       maxZoom: info.maxZoom,
@@ -92,6 +92,7 @@
       keepBuffer: 3,
       updateWhenZooming: false,
       bounds: [[-HALF, -HALF], [HALF, HALF]],
+      epoch: s.epoch,
       mapId: s.mapId,
       v: s.exploreVersion,
       className: 'map-tiles'

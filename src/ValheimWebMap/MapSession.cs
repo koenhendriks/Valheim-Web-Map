@@ -25,6 +25,7 @@ namespace ValheimWebMap
         private readonly ExploredMask _mask;
         private readonly TileService _tiles;
         private readonly PlayerHistory _history;
+        private readonly string _epoch = DateTime.UtcNow.Ticks.ToString("x");
         private readonly List<PlayerEntry> _players = new List<PlayerEntry>();
         private readonly Thread _renderThread;
         private volatile bool _stop;
@@ -62,7 +63,7 @@ namespace ValheimWebMap
                 _log.LogWarning("Could not read " + _exploredPath + ": " + e.Message + ". Starting with an empty map.");
             }
 
-            _tiles = new TileService(_mask, HalfSize, cfg.MaxZoom.Value);
+            _tiles = new TileService(_mask, HalfSize, cfg.MaxZoom.Value, _epoch);
             if (cfg.RevealGeneratedZones.Value) RevealGeneratedZones();
 
             string historyPath = Path.Combine(_dataDir, "history.json");
@@ -220,6 +221,7 @@ namespace ValheimWebMap
             j.Prop("renderProgress", _renderProgress, 3);
             j.Prop("renderError", _renderError);
             j.Prop("nativeZoom", atlas != null ? atlas.NativeZoom : 0);
+            j.Prop("epoch", _epoch);
             j.Prop("mapId", atlas != null ? atlas.Id : 0);
             j.Prop("exploreVersion", _mask.Version);
             j.Prop("exploredPercent", _mask.ExploredPercent, 2);
