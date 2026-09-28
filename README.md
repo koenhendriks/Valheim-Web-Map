@@ -22,6 +22,26 @@ live, interactive web map of your world. Players install nothing.
 
 Built and tested against Valheim 1.0.16 (dedicated server, Linux) with BepInExPack Valheim 5.4.2351.
 
+## Screenshots
+
+Fog of war over a world where a few areas have been visited, with two players sharing their
+position and one who is not:
+
+![Overview with fog of war and online players](docs/screenshots/overview.jpg)
+
+Zoomed in: terrain, rivers, forests and mountains come from the world generator at 5 m per pixel.
+Players show their facing direction, biome, time online and deaths:
+
+![Zoomed in with a player marker](docs/screenshots/players.jpg)
+
+The History tab, with one player's recent sessions expanded:
+
+![History tab with sessions, play time and deaths](docs/screenshots/history.jpg)
+
+On a phone the player panel folds away behind a button:
+
+<img src="docs/screenshots/phone.jpg" alt="Phone layout" width="390">
+
 ## Install
 
 1. Install [BepInExPack Valheim](https://thunderstore.io/c/valheim/p/denikson/BepInExPack_Valheim/)
