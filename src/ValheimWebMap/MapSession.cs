@@ -66,16 +66,29 @@ namespace ValheimWebMap
             _tiles = new TileService(_mask, HalfSize, cfg.MaxZoom.Value, _epoch);
             if (cfg.RevealGeneratedZones.Value) RevealGeneratedZones();
 
-            string historyPath = Path.Combine(_dataDir, "history.json");
-            try
+            if (cfg.TrackSessions.Value)
             {
-                _history = new PlayerHistory(historyPath);
-                if (_history.PlayerCount > 0) _log.LogInfo("Loaded play history for " + _history.PlayerCount + " player(s)");
-            }
-            catch (Exception e)
-            {
-                _log.LogWarning("Could not read " + historyPath + ": " + e.Message + ". Starting a new history.");
-                _history = new PlayerHistory(historyPath + ".new");
+                var options = new HistoryOptions
+                {
+                    TrackDeaths = cfg.TrackDeaths.Value,
+                    RetentionDays = cfg.HistoryRetentionDays.Value,
+                    ShowSessionCount = cfg.ShowSessionCount.Value,
+                    ShowPlayTime = cfg.ShowPlayTime.Value,
+                    ShowDeaths = cfg.ShowDeathCounts.Value,
+                    ShowLastSeen = cfg.ShowLastSeen.Value,
+                    RecentSessions = cfg.RecentSessions.Value,
+                };
+                string historyPath = Path.Combine(_dataDir, "history.json");
+                try
+                {
+                    _history = new PlayerHistory(historyPath, options, DateTime.UtcNow);
+                    if (_history.PlayerCount > 0) _log.LogInfo("Loaded play history for " + _history.PlayerCount + " player(s)");
+                }
+                catch (Exception e)
+                {
+                    _log.LogWarning("Could not read " + historyPath + ": " + e.Message + ". Starting a new history.");
+                    _history = new PlayerHistory(historyPath + ".new", options, DateTime.UtcNow);
+                }
             }
 
             _stateJson = BuildState();
@@ -206,8 +219,11 @@ namespace ValheimWebMap
                 if (!p.HasCharacter || p.Dead || p.Position.sqrMagnitude < 1f) continue;
                 _mask.Reveal(p.Position.x, p.Position.z, radius);
             }
-            EnvMan env = EnvMan.instance;
-            _history.Update(_players, DateTime.UtcNow, env != null ? env.GetDay() : 0);
+            if (_history != null)
+            {
+                EnvMan env = EnvMan.instance;
+                _history.Update(_players, DateTime.UtcNow, env != null ? env.GetDay() : 0);
+            }
             _stateJson = BuildState();
         }
 
@@ -224,9 +240,9 @@ namespace ValheimWebMap
             j.Prop("epoch", _epoch);
             j.Prop("mapId", atlas != null ? atlas.Id : 0);
             j.Prop("exploreVersion", _mask.Version);
-            j.Prop("exploredPercent", _mask.ExploredPercent, 2);
+            if (_cfg.ShowExploredPercent.Value) j.Prop("exploredPercent", _mask.ExploredPercent, 2);
             EnvMan env = EnvMan.instance;
-            if (env != null)
+            if (env != null && _cfg.ShowDayAndTime.Value)
             {
                 j.Prop("day", env.GetDay());
                 j.Prop("timeOfDay", env.GetDayFraction(), 4);
@@ -234,26 +250,30 @@ namespace ValheimWebMap
             j.Key("players").BeginArray();
             foreach (PlayerEntry p in _players)
             {
+                if (!p.Visible && !_cfg.ShowHiddenPlayers.Value) continue;
                 j.BeginObject();
                 j.Prop("id", p.Id);
                 j.Prop("name", p.Name);
                 j.Prop("visible", p.Visible);
-                j.Prop("dead", p.Dead);
+                if (_cfg.ShowDeadStatus.Value) j.Prop("dead", p.Dead);
                 DateTime since;
                 int sessionDeaths, totalDeaths;
-                if (_history.TryGetLive(p.Id, out since, out sessionDeaths, out totalDeaths))
+                if (_history != null && _history.TryGetLive(p.Id, out since, out sessionDeaths, out totalDeaths))
                 {
-                    j.Prop("since", PlayerHistory.Iso(since));
-                    j.Prop("sessionDeaths", sessionDeaths);
-                    j.Prop("deaths", totalDeaths);
+                    if (_cfg.ShowTimeOnline.Value) j.Prop("since", PlayerHistory.Iso(since));
+                    if (_cfg.ShowDeathCounts.Value && _cfg.TrackDeaths.Value)
+                    {
+                        j.Prop("sessionDeaths", sessionDeaths);
+                        j.Prop("deaths", totalDeaths);
+                    }
                 }
                 if (p.Visible)
                 {
                     j.Prop("x", p.Position.x, 1);
                     j.Prop("z", p.Position.z, 1);
                     j.Prop("y", p.Position.y, 1);
-                    j.Prop("yaw", p.Yaw, 0);
-                    j.Prop("biome", p.Biome);
+                    if (_cfg.ShowHeading.Value) j.Prop("yaw", p.Yaw, 0);
+                    if (_cfg.ShowBiome.Value) j.Prop("biome", p.Biome);
                 }
                 j.EndObject();
             }
@@ -263,7 +283,7 @@ namespace ValheimWebMap
         }
 
         public string StateJson => _stateJson;
-        public string HistoryJson => _history.Json;
+        public string HistoryJson => _history != null && _cfg.ShowHistory.Value ? _history.Json : "{\"players\":[]}";
 
         public void SaveIfDirty()
         {
@@ -278,7 +298,7 @@ namespace ValheimWebMap
                     _log.LogWarning("Could not save exploration data: " + e.Message);
                 }
             }
-            if (_history.Dirty)
+            if (_history != null && _history.Dirty)
             {
                 try
                 {

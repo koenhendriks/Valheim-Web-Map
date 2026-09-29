@@ -109,6 +109,19 @@ namespace ValheimWebMap
             j.Prop("maxZoom", _cfg.MaxZoom.Value);
             j.Prop("updateInterval", _cfg.UpdateInterval.Value, 2);
             j.Prop("version", MyPluginInfo.PLUGIN_VERSION);
+            // What the page may show; the API already omits the data behind a disabled switch.
+            j.Key("features").BeginObject();
+            j.Prop("history", _cfg.ShowHistory.Value && _cfg.TrackSessions.Value);
+            j.Prop("hiddenPlayers", _cfg.ShowHiddenPlayers.Value);
+            j.Prop("biome", _cfg.ShowBiome.Value);
+            j.Prop("coordinates", _cfg.ShowCoordinates.Value);
+            j.Prop("heading", _cfg.ShowHeading.Value);
+            j.Prop("timeOnline", _cfg.ShowTimeOnline.Value && _cfg.TrackSessions.Value);
+            j.Prop("deadStatus", _cfg.ShowDeadStatus.Value);
+            j.Prop("deathCounts", _cfg.ShowDeathCounts.Value && _cfg.TrackDeaths.Value && _cfg.TrackSessions.Value);
+            j.Prop("dayTime", _cfg.ShowDayAndTime.Value);
+            j.Prop("explored", _cfg.ShowExploredPercent.Value);
+            j.EndObject();
             j.EndObject();
             return j.ToString();
         }

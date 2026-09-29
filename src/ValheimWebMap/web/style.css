@@ -98,6 +98,7 @@ html, body {
   padding: 10px 14px 6px;
 }
 .tabs { display: flex; gap: 4px; }
+.panel-title { margin: 0; padding: 10px 14px 4px; font-size: 14px; font-weight: 600; }
 .tab {
   border: none;
   background: none;
@@ -235,6 +236,7 @@ html, body {
   text-shadow: 0 1px 1px #000;
   pointer-events: none;
 }
+.pm.no-heading .pm-arrow { display: none; }
 .pm.following .pm-dot { box-shadow: 0 0 0 3px var(--accent), 0 2px 6px rgba(0,0,0,0.6); }
 
 @media (max-width: 720px) {

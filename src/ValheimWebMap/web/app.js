@@ -12,6 +12,7 @@
   var expanded = {};
 
   var map, crs, HALF, info;
+  var features = {};
   var tileLayer = null;
   var tileLayerKey = '';
   var pendingTileKey = '';
@@ -27,6 +28,7 @@
 
   function init(i) {
     info = i;
+    features = i.features || {};
     HALF = i.mapHalfSize;
     var scale0 = i.tileSize / (2 * HALF);
     // Map units are world metres: L.latLng(z, x). North (+z) is up.
@@ -60,8 +62,13 @@
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (btn) {
       btn.addEventListener('click', function () { showTab(btn.getAttribute('data-tab')); });
     });
-    pollHistory();
-    setInterval(pollHistory, 15000);
+    if (features.history === false) {
+      document.querySelector('.tabs').style.display = 'none';
+      $('tab-online').insertAdjacentHTML('afterbegin', '<h1 class="panel-title">Players</h1>');
+    } else {
+      pollHistory();
+      setInterval(pollHistory, 15000);
+    }
     window.addEventListener('hashchange', function () { if (!suppressHash) applyHash(); });
 
     poll();
@@ -169,15 +176,20 @@
       var li = document.createElement('li');
       li.style.setProperty('--c', color);
       li.className = (p.visible ? '' : 'hidden-pos') + (key === followId ? ' following' : '');
-      var where = p.dead ? 'dead' : p.visible ? (p.biome || '') + ' · ' + Math.round(p.x) + ', ' + Math.round(p.z) : 'position hidden';
-      var extra = [];
-      if (p.since) extra.push('online ' + duration((Date.now() - Date.parse(p.since)) / 1000));
-      if (typeof p.deaths === 'number' && p.deaths > 0) extra.push(p.deaths + (p.deaths === 1 ? ' death' : ' deaths'));
+      var parts = [];
+      if (p.dead) parts.push('dead');
+      else if (!p.visible) parts.push('position hidden');
+      else {
+        if (p.biome) parts.push(p.biome);
+        if (features.coordinates !== false && typeof p.x === 'number') parts.push(Math.round(p.x) + ', ' + Math.round(p.z));
+      }
+      if (p.since) parts.push('online ' + duration((Date.now() - Date.parse(p.since)) / 1000));
+      if (typeof p.deaths === 'number' && p.deaths > 0) parts.push(p.deaths + (p.deaths === 1 ? ' death' : ' deaths'));
       li.innerHTML = '<span class="dot"></span><span class="name"></span>' +
         '<span class="follow">' + (key === followId ? 'following' : p.dead ? '<span class="skull">☠</span>' : '') + '</span>' +
         '<span class="sub"></span>';
       li.querySelector('.name').textContent = p.name;
-      li.querySelector('.sub').textContent = where + (extra.length ? ' · ' + extra.join(' · ') : '');
+      li.querySelector('.sub').textContent = parts.join(' · ');
       if (p.visible) {
         li.addEventListener('click', function () {
           setFollow(key === followId ? null : key);
@@ -231,6 +243,7 @@
     if (root) {
       root.style.setProperty('--c', color);
       root.style.setProperty('--yaw', Math.round(p.yaw || 0) + 'deg');
+      root.classList.toggle('no-heading', typeof p.yaw !== 'number');
       root.classList.toggle('following', key === followId);
       root.querySelector('.pm-label').textContent = p.name;
       root.title = p.name + (p.biome ? ' · ' + p.biome : '');
@@ -267,10 +280,13 @@
         '<span class="stats"></span>';
       li.querySelector('.name').textContent = p.name;
       if (p.online) li.querySelector('.online-dot').style.display = '';
-      var when = p.online ? 'online now' : p.lastSeen ? 'last seen ' + relative(p.lastSeen) : '';
-      li.querySelector('.stats').textContent =
-        p.sessions + (p.sessions === 1 ? ' session' : ' sessions') + ' · ' + duration(p.playSeconds) + ' played · ' +
-        p.deaths + (p.deaths === 1 ? ' death' : ' deaths') + (when ? ' · ' + when : '');
+      var stats = [];
+      if (typeof p.sessions === 'number') stats.push(p.sessions + (p.sessions === 1 ? ' session' : ' sessions'));
+      if (typeof p.playSeconds === 'number') stats.push(duration(p.playSeconds) + ' played');
+      if (typeof p.deaths === 'number') stats.push(p.deaths + (p.deaths === 1 ? ' death' : ' deaths'));
+      if (p.online) stats.push('online now');
+      else if (p.lastSeen) stats.push('last seen ' + relative(p.lastSeen));
+      li.querySelector('.stats').textContent = stats.join(' · ');
       if (expanded[p.name] && p.recent && p.recent.length) {
         var ul = document.createElement('ul');
         ul.className = 'sessions';
@@ -278,7 +294,7 @@
           var row = document.createElement('li');
           row.innerHTML = '<span class="date"></span><span class="dur"></span><span class="d"></span>';
           row.querySelector('.date').textContent = formatDate(s.start) + (s.character !== p.name ? ' (' + s.character + ')' : '');
-          row.querySelector('.dur').textContent = duration(s.seconds);
+          row.querySelector('.dur').textContent = typeof s.seconds === 'number' ? duration(s.seconds) : '';
           row.querySelector('.d').textContent = s.deaths ? '☠ ' + s.deaths : '';
           ul.appendChild(row);
         });

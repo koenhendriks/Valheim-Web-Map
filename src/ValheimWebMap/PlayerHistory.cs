@@ -51,6 +51,18 @@ namespace ValheimWebMap
         public List<PlayerRecord> Players = new List<PlayerRecord>();
     }
 
+    /// <summary>What gets recorded and what the history API hands out. Plain values so this file has no BepInEx dependency.</summary>
+    internal sealed class HistoryOptions
+    {
+        public bool TrackDeaths = true;
+        public int RetentionDays;
+        public bool ShowSessionCount = true;
+        public bool ShowPlayTime = true;
+        public bool ShowDeaths = true;
+        public bool ShowLastSeen = true;
+        public int RecentSessions = 30;
+    }
+
     /// <summary>
     /// Per-player play sessions and deaths, derived from the peer list each tick. A session runs from
     /// the moment a connection has a player name until it disappears, so the respawn gap after a death
@@ -74,6 +86,7 @@ namespace ValheimWebMap
         };
 
         private readonly string _path;
+        private readonly HistoryOptions _options;
         private readonly HistoryFile _file;
         private readonly Dictionary<string, PlayerRecord> _byId = new Dictionary<string, PlayerRecord>();
         private readonly Dictionary<long, Live> _live = new Dictionary<long, Live>();
@@ -81,13 +94,33 @@ namespace ValheimWebMap
         private volatile string _json;
         private bool _dirty;
 
-        public PlayerHistory(string path)
+        public PlayerHistory(string path) : this(path, new HistoryOptions(), DateTime.UtcNow)
+        {
+        }
+
+        public PlayerHistory(string path, HistoryOptions options, DateTime now)
         {
             _path = path;
+            _options = options;
             _file = Load(path) ?? new HistoryFile();
+            if (options.RetentionDays > 0) Prune(now.AddDays(-options.RetentionDays));
             foreach (PlayerRecord p in _file.Players)
                 if (!string.IsNullOrEmpty(p.Id)) _byId[p.Id] = p;
             _json = BuildJson();
+        }
+
+        private void Prune(DateTime cutoff)
+        {
+            int before = 0, after = 0;
+            foreach (PlayerRecord p in _file.Players)
+            {
+                before += p.Sessions.Count + p.Deaths.Count;
+                p.Sessions.RemoveAll(s => s.End < cutoff);
+                p.Deaths.RemoveAll(d => d.Time < cutoff);
+                after += p.Sessions.Count + p.Deaths.Count;
+            }
+            _file.Players.RemoveAll(p => p.Sessions.Count == 0 && p.Deaths.Count == 0);
+            if (after != before) _dirty = true;
         }
 
         public string Json => _json;
@@ -167,6 +200,7 @@ namespace ValheimWebMap
         private void RecordDeath(Live live, DateTime now, int day)
         {
             live.DeathCounted = true;
+            if (!_options.TrackDeaths) return;
             live.Session.Deaths++;
             live.Player.Deaths.Add(new DeathRecord { Time = now, Day = day, Character = live.Session.Character });
         }
@@ -198,23 +232,26 @@ namespace ValheimWebMap
                 j.BeginObject();
                 j.Prop("name", p.Name);
                 j.Prop("online", online);
-                j.Prop("sessions", p.Sessions.Count);
-                j.Prop("playSeconds", (long)p.TotalSeconds);
-                j.Prop("deaths", p.Deaths.Count);
-                j.Prop("lastSeen", p.LastSeen == DateTime.MinValue ? null : Iso(p.LastSeen));
-                j.Key("recent").BeginArray();
-                for (int i = p.Sessions.Count - 1, n = 0; i >= 0 && n < 30; i--, n++)
+                if (_options.ShowSessionCount) j.Prop("sessions", p.Sessions.Count);
+                if (_options.ShowPlayTime) j.Prop("playSeconds", (long)p.TotalSeconds);
+                if (_options.ShowDeaths && _options.TrackDeaths) j.Prop("deaths", p.Deaths.Count);
+                if (_options.ShowLastSeen) j.Prop("lastSeen", p.LastSeen == DateTime.MinValue ? null : Iso(p.LastSeen));
+                if (_options.RecentSessions > 0)
                 {
-                    SessionRecord s = p.Sessions[i];
-                    j.BeginObject();
-                    j.Prop("character", s.Character);
-                    j.Prop("start", Iso(s.Start));
-                    j.Prop("end", Iso(s.End));
-                    j.Prop("seconds", (long)s.Seconds);
-                    j.Prop("deaths", s.Deaths);
-                    j.EndObject();
+                    j.Key("recent").BeginArray();
+                    for (int i = p.Sessions.Count - 1, n = 0; i >= 0 && n < _options.RecentSessions; i--, n++)
+                    {
+                        SessionRecord s = p.Sessions[i];
+                        j.BeginObject();
+                        j.Prop("character", s.Character);
+                        j.Prop("start", Iso(s.Start));
+                        j.Prop("end", Iso(s.End));
+                        if (_options.ShowPlayTime) j.Prop("seconds", (long)s.Seconds);
+                        if (_options.ShowDeaths && _options.TrackDeaths) j.Prop("deaths", s.Deaths);
+                        j.EndObject();
+                    }
+                    j.EndArray();
                 }
-                j.EndArray();
                 j.EndObject();
             }
             j.EndArray();

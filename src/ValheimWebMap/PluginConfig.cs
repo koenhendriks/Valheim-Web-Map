@@ -16,6 +16,25 @@ namespace ValheimWebMap
         public readonly ConfigEntry<string> DataDirectory;
         public readonly ConfigEntry<float> SaveInterval;
 
+        public readonly ConfigEntry<bool> TrackSessions;
+        public readonly ConfigEntry<bool> TrackDeaths;
+        public readonly ConfigEntry<int> HistoryRetentionDays;
+
+        public readonly ConfigEntry<bool> ShowHiddenPlayers;
+        public readonly ConfigEntry<bool> ShowBiome;
+        public readonly ConfigEntry<bool> ShowCoordinates;
+        public readonly ConfigEntry<bool> ShowHeading;
+        public readonly ConfigEntry<bool> ShowTimeOnline;
+        public readonly ConfigEntry<bool> ShowDeadStatus;
+        public readonly ConfigEntry<bool> ShowDeathCounts;
+        public readonly ConfigEntry<bool> ShowDayAndTime;
+        public readonly ConfigEntry<bool> ShowExploredPercent;
+        public readonly ConfigEntry<bool> ShowHistory;
+        public readonly ConfigEntry<bool> ShowSessionCount;
+        public readonly ConfigEntry<bool> ShowPlayTime;
+        public readonly ConfigEntry<bool> ShowLastSeen;
+        public readonly ConfigEntry<int> RecentSessions;
+
         public PluginConfig(ConfigFile file)
         {
             Port = file.Bind("Web", "Port", 3000,
@@ -53,6 +72,44 @@ namespace ValheimWebMap
                 "Where the rendered map and exploration data are kept. Empty uses BepInEx/config/ValheimWebMap/<world>.");
             SaveInterval = file.Bind("Storage", "SaveInterval", 60f,
                 new ConfigDescription("Seconds between writes of the exploration data when it changed.", new AcceptableValueRange<float>(5f, 3600f)));
+
+            TrackSessions = file.Bind("History", "TrackSessions", true,
+                "Record a play session (start, end, character) for every connection in history.json.");
+            TrackDeaths = file.Bind("History", "TrackDeaths", true,
+                "Record player deaths in history.json. Requires TrackSessions.");
+            HistoryRetentionDays = file.Bind("History", "RetentionDays", 0,
+                new ConfigDescription("Drop sessions and deaths older than this many days when the world loads. 0 keeps everything.",
+                    new AcceptableValueRange<int>(0, 3650)));
+
+            ShowHiddenPlayers = file.Bind("Display", "ShowHiddenPlayers", true,
+                "List online players who do not share their position (name only, no location).");
+            ShowBiome = file.Bind("Display", "ShowBiome", true,
+                "Show the biome a visible player is in.");
+            ShowCoordinates = file.Bind("Display", "ShowCoordinates", true,
+                "Show a visible player's world coordinates as text in the player list.");
+            ShowHeading = file.Bind("Display", "ShowHeading", true,
+                "Show which way a visible player is facing.");
+            ShowTimeOnline = file.Bind("Display", "ShowTimeOnline", true,
+                "Show how long each online player has been connected. Requires TrackSessions.");
+            ShowDeadStatus = file.Bind("Display", "ShowDeadStatus", true,
+                "Mark players who are currently dead.");
+            ShowDeathCounts = file.Bind("Display", "ShowDeathCounts", true,
+                "Show death counts for online players and in the history. Requires TrackDeaths.");
+            ShowDayAndTime = file.Bind("Display", "ShowDayAndTime", true,
+                "Show the in-game day and time of day.");
+            ShowExploredPercent = file.Bind("Display", "ShowExploredPercent", true,
+                "Show how much of the world has been explored.");
+            ShowHistory = file.Bind("Display", "ShowHistory", true,
+                "Offer the History tab and the /api/history endpoint. Requires TrackSessions.");
+            ShowSessionCount = file.Bind("Display", "ShowSessionCount", true,
+                "History: show how many sessions each player has had.");
+            ShowPlayTime = file.Bind("Display", "ShowPlayTime", true,
+                "History: show each player's total play time.");
+            ShowLastSeen = file.Bind("Display", "ShowLastSeen", true,
+                "History: show when each player was last online.");
+            RecentSessions = file.Bind("Display", "RecentSessions", 30,
+                new ConfigDescription("History: how many recent sessions to list per player. 0 hides the per-session list.",
+                    new AcceptableValueRange<int>(0, 365)));
         }
     }
 }
