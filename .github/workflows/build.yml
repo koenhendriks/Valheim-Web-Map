@@ -1,0 +1,64 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      # The game assemblies are not redistributable, so each build fetches the dedicated
+      # server (free, anonymous login) and compiles against its Managed folder.
+      - name: Download Valheim dedicated server
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -q
+          sudo apt-get install -y -q lib32gcc-s1 lib32stdc++6
+          mkdir -p "$HOME/steamcmd" "$HOME/valheim-server"
+          curl -sfL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar xz -C "$HOME/steamcmd"
+          "$HOME/steamcmd/steamcmd.sh" +@sSteamCmdForcePlatformType linux \
+            +force_install_dir "$HOME/valheim-server" +login anonymous \
+            +app_update 896660 validate +quit
+          ls "$HOME/valheim-server/valheim_server_Data/Managed/assembly_valheim.dll"
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/ValheimWebMap/ValheimWebMap.csproj)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        run: ./build.sh -p:ValheimInstall="$HOME/valheim-server" -p:Version=${{ steps.version.outputs.value }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ValheimWebMap-${{ steps.version.outputs.value }}
+          path: |
+            dist/ValheimWebMap/plugins/ValheimWebMap/ValheimWebMap.dll
+            dist/ValheimWebMap-*.zip
+          if-no-files-found: error
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist && sha256sum ValheimWebMap-*.zip > SHA256SUMS
+          gh release create "${GITHUB_REF#refs/tags/}" ValheimWebMap-*.zip SHA256SUMS \
+            --title "${GITHUB_REF#refs/tags/}" --generate-notes
