@@ -29,9 +29,15 @@ jobs:
           sudo apt-get install -y -q lib32gcc-s1 lib32stdc++6
           mkdir -p "$HOME/steamcmd" "$HOME/valheim-server"
           curl -sfL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar xz -C "$HOME/steamcmd"
-          "$HOME/steamcmd/steamcmd.sh" +@sSteamCmdForcePlatformType linux \
-            +force_install_dir "$HOME/valheim-server" +login anonymous \
-            +app_update 896660 validate +quit
+          # SteamCMD sometimes fails its first attempt with "Missing configuration" before the
+          # app info is cached, so try a few times.
+          for attempt in 1 2 3 4; do
+            "$HOME/steamcmd/steamcmd.sh" +@sSteamCmdForcePlatformType linux \
+              +force_install_dir "$HOME/valheim-server" +login anonymous \
+              +app_info_update 1 +app_update 896660 validate +quit && break
+            echo "SteamCMD attempt $attempt failed, retrying"
+            sleep 10
+          done
           ls "$HOME/valheim-server/valheim_server_Data/Managed/assembly_valheim.dll"
 
       - name: Resolve version
