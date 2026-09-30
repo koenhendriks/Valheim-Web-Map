@@ -108,6 +108,33 @@ Add whatever authentication you want at the proxy; the plugin has none.
 | Players | `UpdateInterval` | `1` | Seconds between position samples. |
 | Storage | `DataDirectory` | *(empty)* | Where map data is stored. Empty means `BepInEx/config/ValheimWebMap/<world>`. |
 | Storage | `SaveInterval` | `60` | Seconds between saves of the exploration data when it changed. |
+| History | `TrackSessions` | `true` | Record play sessions in `history.json`. Off disables all session and death tracking. |
+| History | `TrackDeaths` | `true` | Record deaths. |
+| History | `RetentionDays` | `0` | Drop sessions and deaths older than this many days when the world loads. `0` keeps everything. |
+
+### What the page shows
+
+Each item can be switched off on its own. A disabled item is left out of the API responses, so it
+is hidden from everyone, not just from the page.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `ShowHiddenPlayers` | `true` | List online players who do not share their position (name only). |
+| `ShowBiome` | `true` | Biome of a visible player. |
+| `ShowCoordinates` | `true` | World coordinates of a visible player in the list. The marker itself is unaffected. |
+| `ShowHeading` | `true` | The facing arrow on player markers. |
+| `ShowTimeOnline` | `true` | How long each online player has been connected. |
+| `ShowDeadStatus` | `true` | Mark players who are currently dead. |
+| `ShowDeathCounts` | `true` | Death counts for online players and in the history. |
+| `ShowDayAndTime` | `true` | In-game day and clock in the status bar. |
+| `ShowExploredPercent` | `true` | Explored percentage in the panel. |
+| `ShowHistory` | `true` | The History tab and `/api/history`. |
+| `ShowSessionCount` | `true` | History: number of sessions per player. |
+| `ShowPlayTime` | `true` | History: total play time and per-session length. |
+| `ShowLastSeen` | `true` | History: when a player was last online. |
+| `RecentSessions` | `30` | History: how many recent sessions to list per player. `0` hides the list. |
+
+All of these live in the `[Display]` section.
 
 Exploration is recorded for every connected player, whether or not they share their position; only
 the live marker respects the in-game setting.
@@ -133,6 +160,15 @@ respawning is still counted. Death positions are not stored.
 The world seed is deliberately not exposed.
 
 ## Building
+
+### GitHub Actions
+
+Every push to `main` and every pull request runs the **Build** workflow, which downloads the
+Valheim dedicated server through SteamCMD (anonymous login), compiles against its assemblies and
+uploads `ValheimWebMap.dll` plus the zip as a workflow artifact. Pushing a tag such as `v1.2.0`
+builds with that version and publishes a GitHub release with the zip and a `SHA256SUMS` file.
+
+### Locally
 
 Requires the .NET SDK (any recent version; the plugin targets .NET Framework 4.6.2, which is what
 the game's Mono runtime runs) and a Valheim install to reference the game assemblies.
