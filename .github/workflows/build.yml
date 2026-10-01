@@ -3,7 +3,6 @@ name: Build
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -12,11 +11,15 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          # Tags and full history are needed to decide whether this version is new and to
+          # write the changelog.
+          fetch-depth: 0
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
 
@@ -40,19 +43,24 @@ jobs:
           done
           ls "$HOME/valheim-server/valheim_server_Data/Managed/assembly_valheim.dll"
 
+      # The version in the csproj is the release version. A push to main with a version that
+      # has no tag yet publishes a release; everything else only produces an artifact.
       - name: Resolve version
         id: version
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/ValheimWebMap/ValheimWebMap.csproj)" >> "$GITHUB_OUTPUT"
+          version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/ValheimWebMap/ValheimWebMap.csproj)
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          release=false
+          if [ "$GITHUB_REF" = "refs/heads/main" ] && ! git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            release=true
           fi
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "Version $version, release: $release"
 
       - name: Build
-        run: ./build.sh -p:ValheimInstall="$HOME/valheim-server" -p:Version=${{ steps.version.outputs.value }}
+        run: ./build.sh -p:ValheimInstall="$HOME/valheim-server"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ValheimWebMap-${{ steps.version.outputs.value }}
           path: |
@@ -61,10 +69,13 @@ jobs:
           if-no-files-found: error
 
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.version.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
         run: |
-          cd dist && sha256sum ValheimWebMap-*.zip > SHA256SUMS
-          gh release create "${GITHUB_REF#refs/tags/}" ValheimWebMap-*.zip SHA256SUMS \
-            --title "${GITHUB_REF#refs/tags/}" --generate-notes
+          .github/changelog.sh "$VERSION" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" > dist/notes.md
+          cat dist/notes.md
+          (cd dist && sha256sum ValheimWebMap-*.zip > SHA256SUMS)
+          gh release create "v$VERSION" dist/ValheimWebMap-*.zip dist/SHA256SUMS \
+            --target "$GITHUB_SHA" --title "v$VERSION" --notes-file dist/notes.md
