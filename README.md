@@ -165,8 +165,12 @@ The world seed is deliberately not exposed.
 
 Every push to `main` and every pull request runs the **Build** workflow, which downloads the
 Valheim dedicated server through SteamCMD (anonymous login), compiles against its assemblies and
-uploads `ValheimWebMap.dll` plus the zip as a workflow artifact. Pushing a tag such as `v1.2.0`
-builds with that version and publishes a GitHub release with the zip and a `SHA256SUMS` file.
+uploads `ValheimWebMap.dll` plus the zip as a workflow artifact.
+
+To release, bump `<Version>` in `src/ValheimWebMap/ValheimWebMap.csproj` and push to `main`. When
+the version has no `v<version>` tag yet, the workflow tags the commit and publishes a GitHub
+release with the zip, a `SHA256SUMS` file and release notes listing every commit since the
+previous release, grouped by conventional-commit type (`.github/changelog.sh`).
 
 ### Locally
 
