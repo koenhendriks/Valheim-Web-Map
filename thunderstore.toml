@@ -1,0 +1,33 @@
+# Thunderstore package definition, consumed by the Thunderstore CLI (dotnet tool install -g tcli).
+# The version is always passed in by build.sh from the csproj, so the value here is a placeholder.
+[config]
+schemaVersion = "0.0.1"
+
+[package]
+namespace = "koenhendriks"
+name = "ValheimWebMap"
+versionNumber = "0.0.0"
+description = "Live web map of your world, served by the dedicated server. Shows only terrain players have explored, live positions of players who share them, play sessions and deaths. Server-side only, no client mods."
+websiteUrl = "https://github.com/koenhendriks/Valheim-Web-Map"
+containsNsfwContent = false
+[package.dependencies]
+denikson-BepInExPack_Valheim = "5.4.2351"
+
+[build]
+icon = "./thunderstore/icon.png"
+readme = "./README.md"
+outdir = "./dist/thunderstore"
+
+[[build.copy]]
+source = "./dist/ValheimWebMap/plugins"
+target = "plugins"
+
+[[build.copy]]
+source = "./dist/CHANGELOG.md"
+target = "CHANGELOG.md"
+
+[publish]
+repository = "https://thunderstore.io"
+communities = [ "valheim" ]
+[publish.categories]
+valheim = [ "server-side", "utility" ]
