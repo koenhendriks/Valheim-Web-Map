@@ -12,6 +12,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    env:
+      # Optional: a Thunderstore service-account token. Without it the package is only attached
+      # to the GitHub release.
+      TCLI_AUTH_TOKEN: ${{ secrets.THUNDERSTORE_TOKEN }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -22,6 +26,11 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
+
+      - name: Install Thunderstore CLI
+        run: |
+          dotnet tool install -g tcli
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
       # The game assemblies are not redistributable, so each build fetches the dedicated
       # server (free, anonymous login) and compiles against its Managed folder.
@@ -66,6 +75,7 @@ jobs:
           path: |
             dist/ValheimWebMap/plugins/ValheimWebMap/ValheimWebMap.dll
             dist/ValheimWebMap-*.zip
+            dist/thunderstore/*.zip
           if-no-files-found: error
 
       - name: Release
@@ -76,6 +86,11 @@ jobs:
         run: |
           .github/changelog.sh "$VERSION" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" > dist/notes.md
           cat dist/notes.md
-          (cd dist && sha256sum ValheimWebMap-*.zip > SHA256SUMS)
-          gh release create "v$VERSION" dist/ValheimWebMap-*.zip dist/SHA256SUMS \
+          cp dist/thunderstore/*.zip dist/
+          (cd dist && sha256sum ValheimWebMap-*.zip koenhendriks-ValheimWebMap-*.zip > SHA256SUMS)
+          gh release create "v$VERSION" dist/ValheimWebMap-*.zip dist/koenhendriks-ValheimWebMap-*.zip dist/SHA256SUMS \
             --target "$GITHUB_SHA" --title "v$VERSION" --notes-file dist/notes.md
+
+      - name: Publish to Thunderstore
+        if: steps.version.outputs.release == 'true' && env.TCLI_AUTH_TOKEN != ''
+        run: tcli publish --file "dist/thunderstore/koenhendriks-ValheimWebMap-${{ steps.version.outputs.value }}.zip"
