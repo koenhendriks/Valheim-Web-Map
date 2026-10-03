@@ -27,22 +27,28 @@ Built and tested against Valheim 1.0.16 (dedicated server, Linux) with BepInExPa
 Fog of war over a world where a few areas have been visited, with two players sharing their
 position and one who is not:
 
-![Overview with fog of war and online players](docs/screenshots/overview.jpg)
+![Overview with fog of war and online players](https://raw.githubusercontent.com/koenhendriks/Valheim-Web-Map/main/docs/screenshots/overview.jpg)
 
 Zoomed in: terrain, rivers, forests and mountains come from the world generator at 5 m per pixel.
 Players show their facing direction, biome, time online and deaths:
 
-![Zoomed in with a player marker](docs/screenshots/players.jpg)
+![Zoomed in with a player marker](https://raw.githubusercontent.com/koenhendriks/Valheim-Web-Map/main/docs/screenshots/players.jpg)
 
 The History tab, with one player's recent sessions expanded:
 
-![History tab with sessions, play time and deaths](docs/screenshots/history.jpg)
+![History tab with sessions, play time and deaths](https://raw.githubusercontent.com/koenhendriks/Valheim-Web-Map/main/docs/screenshots/history.jpg)
 
 On a phone the player panel folds away behind a button:
 
-<img src="docs/screenshots/phone.jpg" alt="Phone layout" width="390">
+![Phone layout](https://raw.githubusercontent.com/koenhendriks/Valheim-Web-Map/main/docs/screenshots/phone.jpg)
 
 ## Install
+
+With a mod manager (r2modman, Gale or the Thunderstore app), pick the **Valheim Dedicated Server**
+profile and install **ValheimWebMap**; BepInExPack Valheim comes along as a dependency. Then skip
+to step 3.
+
+By hand:
 
 1. Install [BepInExPack Valheim](https://thunderstore.io/c/valheim/p/denikson/BepInExPack_Valheim/)
    on the **server**.
@@ -171,6 +177,16 @@ To release, bump `<Version>` in `src/ValheimWebMap/ValheimWebMap.csproj` and pus
 the version has no `v<version>` tag yet, the workflow tags the commit and publishes a GitHub
 release with the zip, a `SHA256SUMS` file and release notes listing every commit since the
 previous release, grouped by conventional-commit type (`.github/changelog.sh`).
+
+### Thunderstore
+
+`thunderstore.toml` describes the Thunderstore package; `build.sh` runs the
+[Thunderstore CLI](https://github.com/thunderstore-io/thunderstore-cli) (`dotnet tool install -g tcli`)
+to produce `dist/thunderstore/koenhendriks-ValheimWebMap-<version>.zip` with `manifest.json`,
+`icon.png`, this README and a `CHANGELOG.md` made from the release notes. The workflow attaches
+that zip to every GitHub release. When a `THUNDERSTORE_TOKEN` repository secret is present (a
+service account token for the `koenhendriks` team), the release step also uploads the package to
+Thunderstore; without the secret, upload it by hand at <https://thunderstore.io/package/create/>.
 
 ### Locally
 
