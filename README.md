@@ -184,9 +184,10 @@ previous release, grouped by conventional-commit type (`.github/changelog.sh`).
 [Thunderstore CLI](https://github.com/thunderstore-io/thunderstore-cli) (`dotnet tool install -g tcli`)
 to produce `dist/thunderstore/koenhendriks-ValheimWebMap-<version>.zip` with `manifest.json`,
 `icon.png`, this README and a `CHANGELOG.md` made from the release notes. The workflow attaches
-that zip to every GitHub release. When a `THUNDERSTORE_TOKEN` repository secret is present (a
-service account token for the `koenhendriks` team), the release step also uploads the package to
-Thunderstore; without the secret, upload it by hand at <https://thunderstore.io/package/create/>.
+that zip to every GitHub release. When a `THUNDERSTORE_TOKEN` secret is present in the `Default`
+environment (a service account token for the `koenhendriks` team), any released version that is
+missing from the Thunderstore listing is uploaded on the next push to `main`; without the secret,
+upload it by hand at <https://thunderstore.io/package/create/>.
 
 ### Locally
 

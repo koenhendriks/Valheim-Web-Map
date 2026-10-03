@@ -12,6 +12,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    # The Thunderstore token is an environment secret; the job must run in that environment to read it.
+    environment: Default
     env:
       # Optional: a Thunderstore service-account token. Without it the package is only attached
       # to the GitHub release.
@@ -91,6 +93,21 @@ jobs:
           gh release create "v$VERSION" dist/ValheimWebMap-*.zip dist/koenhendriks-ValheimWebMap-*.zip dist/SHA256SUMS \
             --target "$GITHUB_SHA" --title "v$VERSION" --notes-file dist/notes.md
 
+      # Publishes a version that is released on GitHub but not yet on Thunderstore. Checking the
+      # listing instead of "did this run release" means a version whose first run could not
+      # publish (no token yet, Thunderstore down) goes out on the next push.
       - name: Publish to Thunderstore
-        if: steps.version.outputs.release == 'true' && env.TCLI_AUTH_TOKEN != ''
-        run: tcli publish --file "dist/thunderstore/koenhendriks-ValheimWebMap-${{ steps.version.outputs.value }}.zip"
+        if: github.ref == 'refs/heads/main' && env.TCLI_AUTH_TOKEN != ''
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          RELEASED_NOW: ${{ steps.version.outputs.release }}
+        run: |
+          if [ "$RELEASED_NOW" != "true" ] && ! git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "v$VERSION is not released on GitHub; nothing to publish"
+            exit 0
+          fi
+          if curl -sf "https://thunderstore.io/api/experimental/package/koenhendriks/ValheimWebMap/$VERSION/" >/dev/null; then
+            echo "$VERSION is already on Thunderstore"
+            exit 0
+          fi
+          tcli publish --file "dist/thunderstore/koenhendriks-ValheimWebMap-$VERSION.zip"
