@@ -97,6 +97,7 @@ jobs:
       # listing instead of "did this run release" means a version whose first run could not
       # publish (no token yet, Thunderstore down) goes out on the next push.
       - name: Publish to Thunderstore
+        id: publish
         if: github.ref == 'refs/heads/main' && env.TCLI_AUTH_TOKEN != ''
         env:
           VERSION: ${{ steps.version.outputs.value }}
@@ -104,10 +105,40 @@ jobs:
         run: |
           if [ "$RELEASED_NOW" != "true" ] && ! git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
             echo "v$VERSION is not released on GitHub; nothing to publish"
+            echo "verify=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "verify=true" >> "$GITHUB_OUTPUT"
           if curl -sf "https://thunderstore.io/api/experimental/package/koenhendriks/ValheimWebMap/$VERSION/" >/dev/null; then
             echo "$VERSION is already on Thunderstore"
             exit 0
           fi
           tcli publish --file "dist/thunderstore/koenhendriks-ValheimWebMap-$VERSION.zip"
+
+      # Confirms the version is really downloadable: fetches the package from Thunderstore (with
+      # retries, since a fresh upload takes a moment to propagate) and checks that it carries this
+      # version and the DLL that was just built.
+      - name: Verify Thunderstore download
+        if: steps.publish.outputs.verify == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          url="https://thunderstore.io/package/download/koenhendriks/ValheimWebMap/$VERSION/"
+          for attempt in $(seq 1 12); do
+            if curl -sfL -o /tmp/thunderstore.zip "$url" && unzip -tq /tmp/thunderstore.zip >/dev/null 2>&1; then
+              break
+            fi
+            echo "attempt $attempt: $url not downloadable yet"
+            rm -f /tmp/thunderstore.zip
+            sleep 30
+          done
+          [ -f /tmp/thunderstore.zip ] || { echo "::error::$url could not be downloaded"; exit 1; }
+          echo "downloaded $(stat -c %s /tmp/thunderstore.zip) bytes from $url"
+
+          got=$(unzip -p /tmp/thunderstore.zip manifest.json | python3 -c 'import sys, json; print(json.load(sys.stdin)["version_number"])')
+          [ "$got" = "$VERSION" ] || { echo "::error::Thunderstore serves version $got, expected $VERSION"; exit 1; }
+
+          expected=$(sha256sum dist/ValheimWebMap/plugins/ValheimWebMap/ValheimWebMap.dll | cut -d' ' -f1)
+          actual=$(unzip -p /tmp/thunderstore.zip plugins/ValheimWebMap/ValheimWebMap.dll | sha256sum | cut -d' ' -f1)
+          [ "$actual" = "$expected" ] || { echo "::error::DLL in the Thunderstore package differs from this build"; exit 1; }
+          echo "Thunderstore package $VERSION verified: manifest version and DLL checksum match"
