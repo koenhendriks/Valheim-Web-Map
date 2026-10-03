@@ -117,10 +117,13 @@ jobs:
 
       # Confirms the version is really downloadable: fetches the package from Thunderstore (with
       # retries, since a fresh upload takes a moment to propagate) and checks that it carries this
-      # version and the DLL that was just built.
+      # version and the same DLL as the zip on the GitHub release, which is the file that was
+      # uploaded. This run's own build is not a valid reference: it may come from a later commit,
+      # and the SDK stamps the commit hash into the assembly.
       - name: Verify Thunderstore download
         if: steps.publish.outputs.verify == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.value }}
         run: |
           url="https://thunderstore.io/package/download/koenhendriks/ValheimWebMap/$VERSION/"
@@ -138,7 +141,9 @@ jobs:
           got=$(unzip -p /tmp/thunderstore.zip manifest.json | python3 -c 'import sys, json; print(json.load(sys.stdin)["version_number"])')
           [ "$got" = "$VERSION" ] || { echo "::error::Thunderstore serves version $got, expected $VERSION"; exit 1; }
 
-          expected=$(sha256sum dist/ValheimWebMap/plugins/ValheimWebMap/ValheimWebMap.dll | cut -d' ' -f1)
+          mkdir -p /tmp/release
+          gh release download "v$VERSION" --pattern "koenhendriks-ValheimWebMap-$VERSION.zip" --dir /tmp/release --clobber
+          expected=$(unzip -p "/tmp/release/koenhendriks-ValheimWebMap-$VERSION.zip" plugins/ValheimWebMap/ValheimWebMap.dll | sha256sum | cut -d' ' -f1)
           actual=$(unzip -p /tmp/thunderstore.zip plugins/ValheimWebMap/ValheimWebMap.dll | sha256sum | cut -d' ' -f1)
-          [ "$actual" = "$expected" ] || { echo "::error::DLL in the Thunderstore package differs from this build"; exit 1; }
-          echo "Thunderstore package $VERSION verified: manifest version and DLL checksum match"
+          [ "$actual" = "$expected" ] || { echo "::error::DLL in the Thunderstore package differs from the v$VERSION GitHub release"; exit 1; }
+          echo "Thunderstore package $VERSION verified: manifest version and DLL checksum match the GitHub release"
