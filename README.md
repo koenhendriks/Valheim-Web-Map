@@ -27,20 +27,20 @@ Built and tested against Valheim 1.0.16 (dedicated server, Linux) with BepInExPa
 Fog of war over a world where a few areas have been visited, with two players sharing their
 position and one who is not:
 
-![Overview with fog of war and online players](https://raw.githubusercontent.com/koenhendriks/Valheim-Web-Map/main/docs/screenshots/overview.jpg)
+![Overview with fog of war and online players](./docs/screenshots/overview.jpg)
 
 Zoomed in: terrain, rivers, forests and mountains come from the world generator at 5 m per pixel.
 Players show their facing direction, biome, time online and deaths:
 
-![Zoomed in with a player marker](https://raw.githubusercontent.com/koenhendriks/Valheim-Web-Map/main/docs/screenshots/players.jpg)
+![Zoomed in with a player marker](./docs/screenshots/players.jpg)
 
 The History tab, with one player's recent sessions expanded:
 
-![History tab with sessions, play time and deaths](https://raw.githubusercontent.com/koenhendriks/Valheim-Web-Map/main/docs/screenshots/history.jpg)
+![History tab with sessions, play time and deaths](./docs/screenshots/history.jpg)
 
 On a phone the player panel folds away behind a button:
 
-![Phone layout](https://raw.githubusercontent.com/koenhendriks/Valheim-Web-Map/main/docs/screenshots/phone.jpg)
+![Phone layout](./docs/screenshots/phone.jpg)
 
 ## Install
 
