@@ -29,6 +29,7 @@
       <nav class="tabs" role="tablist">
         <button type="button" class="tab active" data-tab="online" role="tab">Online</button>
         <button type="button" class="tab" data-tab="history" role="tab">History</button>
+        <button type="button" class="tab" data-tab="markers" role="tab">Markers</button>
       </nav>
       <span id="explored" class="muted"></span>
     </header>
@@ -41,6 +42,16 @@
       <ul id="history"></ul>
       <p id="no-history" class="muted">No sessions recorded yet.</p>
       <footer class="muted">Sessions, play time and deaths per player, recorded by the server.</footer>
+    </section>
+    <section id="tab-markers" class="tab-page">
+      <div class="marker-filters">
+        <label><input type="checkbox" id="f-pins" checked> Markers</label>
+        <label id="f-checked-wrap"><input type="checkbox" id="f-checked" checked> Crossed out</label>
+        <label id="f-deaths-wrap"><input type="checkbox" id="f-deaths" checked> Deaths</label>
+      </div>
+      <ul id="pin-owners"></ul>
+      <p id="no-pins" class="muted">No markers shared on a cartography table yet.</p>
+      <footer class="muted">Markers come from cartography tables in the world. Deaths come from the server's own records.</footer>
     </section>
   </aside>
 

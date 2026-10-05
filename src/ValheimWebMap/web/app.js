@@ -11,6 +11,12 @@
   var activeTab = 'online';
   var expanded = {};
 
+  // Cartography table markers and death markers.
+  var pins = { owners: [], pins: [], deaths: [] };
+  var lastPinsVersion = -1;
+  var pinMarkers = {};
+  var markerPrefs = loadMarkerPrefs();
+
   var map, crs, HALF, info;
   var features = {};
   var tileLayer = null;
@@ -48,6 +54,9 @@
       maxBoundsViscosity: 0.8
     });
     L.control.scale({ imperial: false, maxWidth: 160 }).addTo(map);
+    map.createPane('pins').style.zIndex = 450; // below player markers (600)
+    map.on('zoomend', updateLabelVisibility);
+    updateLabelVisibility();
 
     if (!applyHash()) map.setView([0, 0], 2);
 
@@ -62,13 +71,18 @@
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (btn) {
       btn.addEventListener('click', function () { showTab(btn.getAttribute('data-tab')); });
     });
-    if (features.history === false) {
+    var showMarkersTab = features.pins !== false || features.deathMarkers !== false;
+    if (features.history === false) document.querySelector('.tab[data-tab="history"]').style.display = 'none';
+    if (!showMarkersTab) document.querySelector('.tab[data-tab="markers"]').style.display = 'none';
+    if (features.history === false && !showMarkersTab) {
       document.querySelector('.tabs').style.display = 'none';
       $('tab-online').insertAdjacentHTML('afterbegin', '<h1 class="panel-title">Players</h1>');
-    } else {
+    }
+    if (features.history !== false) {
       pollHistory();
       setInterval(pollHistory, 15000);
     }
+    setupMarkerFilters();
     window.addEventListener('hashchange', function () { if (!suppressHash) applyHash(); });
 
     poll();
@@ -128,6 +142,9 @@
       renderStatus(s);
       ensureTiles(s);
       renderPlayers(s.players || []);
+      if ((features.pins !== false || features.deathMarkers !== false) && s.pinsVersion !== lastPinsVersion) {
+        fetchPins(s.pinsVersion);
+      }
     }).catch(function () {
       el.world.textContent = 'Connection lost…';
     });
@@ -332,6 +349,143 @@
     var d = new Date(iso);
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' +
       d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // --- cartography table markers ---------------------------------------------
+
+  function loadMarkerPrefs() {
+    var prefs = { hiddenOwners: {}, pins: true, checked: true, deaths: true };
+    try {
+      var saved = JSON.parse(localStorage.getItem('vwm.markers') || '{}');
+      if (saved && typeof saved === 'object') {
+        if (saved.hiddenOwners && typeof saved.hiddenOwners === 'object') prefs.hiddenOwners = saved.hiddenOwners;
+        ['pins', 'checked', 'deaths'].forEach(function (k) { if (typeof saved[k] === 'boolean') prefs[k] = saved[k]; });
+      }
+    } catch (e) { /* storage unavailable: defaults */ }
+    return prefs;
+  }
+
+  function saveMarkerPrefs() {
+    try { localStorage.setItem('vwm.markers', JSON.stringify(markerPrefs)); } catch (e) { /* ignore */ }
+  }
+
+  function setupMarkerFilters() {
+    var map_ = { 'f-pins': 'pins', 'f-checked': 'checked', 'f-deaths': 'deaths' };
+    Object.keys(map_).forEach(function (id) {
+      var box = $(id);
+      box.checked = markerPrefs[map_[id]];
+      box.addEventListener('change', function () {
+        markerPrefs[map_[id]] = box.checked;
+        saveMarkerPrefs();
+        renderPinMarkers();
+      });
+    });
+    if (features.pins === false) { $('f-pins').parentNode.classList.add('hidden'); $('f-checked-wrap').classList.add('hidden'); }
+    if (features.checkedPins === false) $('f-checked-wrap').classList.add('hidden');
+    if (features.deathMarkers === false) $('f-deaths-wrap').classList.add('hidden');
+  }
+
+  function fetchPins(version) {
+    fetch('api/pins', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (p) {
+      pins = { owners: p.owners || [], pins: p.pins || [], deaths: p.deaths || [] };
+      lastPinsVersion = version;
+      renderOwners();
+      renderPinMarkers();
+    }).catch(function () {});
+  }
+
+  function ownerLabel(o) { return o.name || 'Unknown owner'; }
+
+  function renderOwners() {
+    var list = $('pin-owners');
+    var owners = pins.owners.slice().sort(function (a, b) {
+      if (a.online !== b.online) return a.online ? -1 : 1;
+      if (!!a.name !== !!b.name) return a.name ? -1 : 1;
+      return b.pins - a.pins;
+    });
+    $('no-pins').classList.toggle('hidden', owners.length > 0 || pins.deaths.length > 0);
+    var frag = document.createDocumentFragment();
+    owners.forEach(function (o) {
+      var li = document.createElement('li');
+      li.className = 'owner' + (o.name ? '' : ' unknown');
+      li.style.setProperty('--c', colorFor(o.name || 'owner:' + o.id));
+      li.innerHTML = '<input type="checkbox"><span class="dot"></span><span class="name"></span><span class="count"></span>';
+      var box = li.querySelector('input');
+      box.checked = !markerPrefs.hiddenOwners[o.id];
+      li.querySelector('.name').textContent = ownerLabel(o);
+      if (o.online) li.querySelector('.name').insertAdjacentHTML('beforeend', '<span class="online-dot" title="online"></span>');
+      li.querySelector('.count').textContent = o.pins + (o.pins === 1 ? ' marker' : ' markers');
+      var toggle = function (checked) {
+        if (checked) delete markerPrefs.hiddenOwners[o.id]; else markerPrefs.hiddenOwners[o.id] = true;
+        box.checked = checked;
+        saveMarkerPrefs();
+        renderPinMarkers();
+      };
+      box.addEventListener('click', function (e) { e.stopPropagation(); toggle(box.checked); });
+      li.addEventListener('click', function () { toggle(!box.checked); });
+      frag.appendChild(li);
+    });
+    list.innerHTML = '';
+    list.appendChild(frag);
+  }
+
+  var bossNames = {
+    '$enemy_eikthyr': 'Eikthyr', '$enemy_gdking': 'The Elder', '$enemy_bonemass': 'Bonemass', '$enemy_dragon': 'Moder',
+    '$enemy_goblinking': 'Yagluth', '$enemy_seekerqueen': 'The Queen', '$enemy_fader': 'Fader'
+  };
+  function prettyName(name) {
+    if (!name) return '';
+    if (bossNames[name]) return bossNames[name];
+    if (name.charAt(0) === '$') {
+      return name.replace(/^\$[a-z]+_/, '').replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+    }
+    return name;
+  }
+
+  function renderPinMarkers() {
+    var wanted = {};
+    if (features.pins !== false && markerPrefs.pins) {
+      pins.pins.forEach(function (p) {
+        if (markerPrefs.hiddenOwners[p.owner]) return;
+        if (p.checked && !markerPrefs.checked) return;
+        wanted[p.id] = { x: p.x, z: p.z, cls: 'pin-' + p.type + (p.checked ? ' checked' : ''), label: prettyName(p.name), title: ownerOf(p.owner) + ' · ' + p.type };
+      });
+    }
+    if (features.deathMarkers !== false && markerPrefs.deaths) {
+      pins.deaths.forEach(function (d) {
+        var id = 'death:' + d.name + ':' + d.time;
+        wanted[id] = { x: d.x, z: d.z, cls: 'pin-death', label: d.name + ' · Day ' + d.day, title: 'Died ' + formatDate(d.time) };
+      });
+    }
+    Object.keys(wanted).forEach(function (id) {
+      var w = wanted[id];
+      var m = pinMarkers[id];
+      if (!m) {
+        m = L.marker([w.z, w.x], {
+          pane: 'pins', keyboard: false, interactive: true,
+          icon: L.divIcon({ className: 'pin-marker', iconSize: [0, 0], iconAnchor: [0, 0], html: '<div class="pin"><span class="pin-glyph"></span><span class="pin-label"></span></div>' })
+        }).addTo(map);
+        pinMarkers[id] = m;
+      }
+      var root = m.getElement() && m.getElement().querySelector('.pin');
+      if (root) {
+        root.className = 'pin ' + w.cls;
+        root.querySelector('.pin-label').textContent = w.label;
+        root.title = (w.label ? w.label + ' · ' : '') + w.title;
+      }
+    });
+    Object.keys(pinMarkers).forEach(function (id) {
+      if (!wanted[id]) { map.removeLayer(pinMarkers[id]); delete pinMarkers[id]; }
+    });
+  }
+
+  function ownerOf(id) {
+    for (var i = 0; i < pins.owners.length; i++) if (pins.owners[i].id === id) return ownerLabel(pins.owners[i]);
+    return 'Unknown owner';
+  }
+
+  function updateLabelVisibility() {
+    $('map').classList.toggle('labels-off', map.getZoom() < 3);
   }
 
   function setFollow(key) {
