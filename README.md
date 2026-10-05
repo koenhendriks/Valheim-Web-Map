@@ -12,6 +12,10 @@ live, interactive web map of your world. Players install nothing.
   online with their position hidden.
 - **Familiar controls.** Scroll or pinch to zoom, drag to pan, double-click to zoom in, click a
   player to follow them. Works on phones. The URL keeps the view (`#x,z,zoom`) so it can be shared.
+- **Cartography tables.** Markers that players share on an in-world cartography table appear on
+  the web map, grouped by the player who placed them so each player's markers can be switched on
+  and off. The explored area shared on the table lifts the fog as well. Deaths of players who were
+  sharing their position are marked where they happened.
 - **Play history.** Every connection is recorded as a session with its length and the deaths
   that happened in it, so the History tab shows how often, how long and how deadly each player's
   time on the server has been. Nothing is needed from the clients.
@@ -75,7 +79,7 @@ instant. Map data lives in `BepInEx/config/ValheimWebMap/<world name>/`:
 | --- | --- |
 | `basemap_<resolution>.bin` | Cached world render. Redone automatically after a game update. |
 | `explored.bin` | Fog-of-war state. Delete it to start over with a black map. |
-| `history.json` | Play sessions and deaths per player (keyed by Steam or PlayFab id). Human readable. |
+| `history.json` | Play sessions, deaths (with position when shared) and character ids per player (keyed by Steam or PlayFab id). Human readable. |
 
 ### Docker (lloesche/valheim-server)
 
@@ -111,6 +115,8 @@ Add whatever authentication you want at the proxy; the plugin has none.
 | Exploration | `ExploreRadius` | `100` | Metres revealed around each player, same as the in-game map. |
 | Exploration | `RevealGeneratedZones` | `true` | Reveal zones already generated in the save at startup. |
 | Exploration | `RevealGeneratedZonesMargin` | `1` | The game generates zones a bit further out than the map reveals; a zone counts only if all zones within this many zones are generated too. |
+| Exploration | `RevealFromCartographyTable` | `true` | Lift the fog wherever the map shared on a cartography table has been explored. |
+| CartographyTables | `ScanInterval` | `30` | Seconds between scans for cartography tables. Only tables whose contents changed are read again. |
 | Players | `UpdateInterval` | `1` | Seconds between position samples. |
 | Storage | `DataDirectory` | *(empty)* | Where map data is stored. Empty means `BepInEx/config/ValheimWebMap/<world>`. |
 | Storage | `SaveInterval` | `60` | Seconds between saves of the exploration data when it changed. |
@@ -139,6 +145,10 @@ is hidden from everyone, not just from the page.
 | `ShowPlayTime` | `true` | History: total play time and per-session length. |
 | `ShowLastSeen` | `true` | History: when a player was last online. |
 | `RecentSessions` | `30` | History: how many recent sessions to list per player. `0` hides the list. |
+| `ShowPins` | `true` | Markers shared on cartography tables, with the Markers tab to toggle them per player. |
+| `ShowCheckedPins` | `true` | Include markers that were crossed out on the table. The page has its own switch too. |
+| `ShowDeathMarkers` | `true` | Mark where players died. Only deaths of players who were sharing their position at the time. |
+| `DeathMarkersPerPlayer` | `5` | How many of each player's most recent deaths to mark. `0` marks all. |
 
 All of these live in the `[Display]` section.
 
@@ -151,7 +161,19 @@ A session starts when a connection has a player name and ends when that connecti
 the respawn pause after dying does not split it. Deaths are detected from the `dead` flag the game
 sets on the player's character for the ten seconds before the body is removed, with a respawn
 (new character id on the same connection) as a fallback. A player who dies and logs out before
-respawning is still counted. Death positions are not stored.
+respawning is still counted. The place of death is stored only when the player was sharing their
+position at that moment, so a player who hides their position also hides where they died.
+
+### Cartography tables
+
+Writing to a cartography table stores the shared map in the table itself, which the server holds.
+The plugin scans the world for tables every `ScanInterval` seconds (spread over several frames),
+decodes any table whose contents changed on a worker thread, lifts the fog where the shared map is
+explored, and merges the pins of all tables (pins within a metre of each other count once, as in
+the game). Pins carry the id of the character that placed them; names are resolved from players
+seen online, so a marker from a character that has not connected since the plugin was installed
+shows as "Unknown owner" until they do. Death pins are never shared by the game, which is why
+death markers come from the server's own records instead.
 
 ## HTTP API
 
@@ -161,6 +183,7 @@ respawning is still counted. Death positions are not stored.
 | `GET /api/info` | World name, map extent, zoom limits. |
 | `GET /api/state` | Render progress, exploration version, in-game day and time, online players with session start and death counts. |
 | `GET /api/history` | Per player: session count, total play time, deaths, last seen and the 30 most recent sessions. |
+| `GET /api/pins` | Cartography table markers (`pins`, `owners`) and death markers (`deaths`). `pinsVersion` in `/api/state` changes when this does. |
 | `GET /tiles/{z}/{x}/{y}.png` | 256 px map tiles with fog applied. |
 
 The world seed is deliberately not exposed.
@@ -216,6 +239,8 @@ files, handy for tweaking without rebuilding.
   *Visible to other players* flag from `ZNetPeer.m_publicRefPos`.
 - Sessions and deaths are derived from the same per-second peer snapshot and saved with
   Newtonsoft.Json, which the game ships.
+- Cartography tables are found with `ZDOMan.GetAllZDOsWithPrefabIterative` and read from the
+  `data` entry of their ZDO, the gzip stream the client writes with `Minimap.GetSharedMapData`.
 
 ## Credits
 

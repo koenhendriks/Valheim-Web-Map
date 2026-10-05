@@ -7,7 +7,7 @@ schemaVersion = "0.0.1"
 namespace = "koenhendriks"
 name = "ValheimWebMap"
 versionNumber = "0.0.0"
-description = "Live web map of your world, served by the dedicated server. Shows only terrain players have explored, live positions of players who share them, play sessions and deaths. Server-side only, no client mods."
+description = "Live web map served by the dedicated server. Shows only terrain players explored, live positions of players who share them, cartography table markers, play sessions and deaths. Server-side only, no client mods."
 websiteUrl = "https://github.com/koenhendriks/Valheim-Web-Map"
 containsNsfwContent = false
 [package.dependencies]
