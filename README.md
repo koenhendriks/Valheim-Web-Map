@@ -147,6 +147,8 @@ is hidden from everyone, not just from the page.
 | `RecentSessions` | `30` | History: how many recent sessions to list per player. `0` hides the list. |
 | `ShowPins` | `true` | Markers shared on cartography tables, with the Markers tab to toggle them per player. |
 | `ShowCheckedPins` | `true` | Include markers that were crossed out on the table. The page has its own switch too. |
+| `ShowAutomatedPins` | `false` | Also show markers written to tables by server-side mods such as AutoMapTables, grouped under the mod's name. |
+| `HidePinsInFog` | `true` | Hide markers that lie in unexplored territory. |
 | `ShowDeathMarkers` | `true` | Mark where players died. Only deaths of players who were sharing their position at the time. |
 | `DeathMarkersPerPlayer` | `5` | How many of each player's most recent deaths to mark. `0` marks all. |
 
@@ -174,6 +176,11 @@ the game). Pins carry the id of the character that placed them; names are resolv
 seen online, so a marker from a character that has not connected since the plugin was installed
 shows as "Unknown owner" until they do. Death pins are never shared by the game, which is why
 death markers come from the server's own records instead.
+
+Pins carry the platform id of the player who shared them. Server-side mods that fill tables
+themselves, such as AutoMapTables, put their plugin id there instead; those markers are left out
+unless `ShowAutomatedPins` is on. Markers in unexplored territory are also left out by default
+(`HidePinsInFog`), so a marker only appears once someone has actually been there.
 
 ## HTTP API
 
