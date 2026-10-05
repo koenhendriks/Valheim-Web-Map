@@ -90,6 +90,23 @@ namespace ValheimWebMap
             }
         }
 
+        /// <summary>
+        /// The game writes the author as "&lt;Platform&gt;_&lt;id&gt;" (Steam_7656..., PlayFab_...). Server-side
+        /// mods that write pins put their own plugin id there instead. Data from before the author
+        /// field existed has an empty author and counts as a player's.
+        /// </summary>
+        public static bool IsPlayerAuthor(string author)
+        {
+            if (string.IsNullOrEmpty(author)) return true;
+            int underscore = author.IndexOf('_');
+            if (underscore <= 0 || underscore == author.Length - 1) return false;
+            for (int i = 0; i < underscore; i++)
+                if (!char.IsLetter(author[i])) return false;
+            for (int i = underscore + 1; i < author.Length; i++)
+                if (!char.IsLetterOrDigit(author[i]) && author[i] != '-') return false;
+            return true;
+        }
+
         public static string KindName(int pinType)
         {
             switch (pinType)

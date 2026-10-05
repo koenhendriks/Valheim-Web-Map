@@ -32,6 +32,7 @@ namespace ValheimWebMap
         private int _pinsBuiltFor = -1;
         private int _deathsBuiltFor = -1;
         private ulong _onlineBuiltFor;
+        private ulong _fogBuiltFor;
         public const string EmptyPins = "{\"version\":0,\"tables\":0,\"owners\":[],\"pins\":[],\"deaths\":[]}";
         private readonly List<PlayerEntry> _players = new List<PlayerEntry>();
         private readonly Thread _renderThread;
@@ -251,10 +252,16 @@ namespace ValheimWebMap
             ulong online = 0;
             foreach (PlayerEntry p in _players)
                 if (p.PlayerId != 0) online ^= Hash.Fnv1a64(p.PlayerId + ":" + p.Name);
-            if (snapshot.Version == _pinsBuiltFor && deaths == _deathsBuiltFor && online == _onlineBuiltFor) return;
+            // Exploration keeps growing while the pins stay the same, so track which pins the fog lets through.
+            ulong fog = 0;
+            if (_cfg.HidePinsInFog.Value)
+                foreach (MergedPin pin in snapshot.Pins)
+                    if (InExploredArea(pin)) fog ^= Hash.Fnv1a64(pin.Id);
+            if (snapshot.Version == _pinsBuiltFor && deaths == _deathsBuiltFor && online == _onlineBuiltFor && fog == _fogBuiltFor) return;
             _pinsBuiltFor = snapshot.Version;
             _deathsBuiltFor = deaths;
             _onlineBuiltFor = online;
+            _fogBuiltFor = fog;
             _pinsVersion++;
             _pinsJson = BuildPins(snapshot);
         }
@@ -270,10 +277,12 @@ namespace ValheimWebMap
         {
             bool showPins = _cfg.ShowPins.Value;
             bool showChecked = _cfg.ShowCheckedPins.Value;
+            bool showAutomated = _cfg.ShowAutomatedPins.Value;
+            bool hideInFog = _cfg.HidePinsInFog.Value;
             bool showDeaths = _cfg.ShowDeathMarkers.Value && _cfg.TrackDeaths.Value && _history != null;
 
-            var owners = new Dictionary<long, OwnerInfo>();
-            var order = new List<long>();
+            var owners = new Dictionary<string, OwnerInfo>();
+            var order = new List<string>();
             var j = new JsonWriter(1024 + snapshot.Pins.Count * 160);
             j.BeginObject();
             j.Prop("version", _pinsVersion);
@@ -285,18 +294,23 @@ namespace ValheimWebMap
                 foreach (MergedPin pin in snapshot.Pins)
                 {
                     if (pin.Checked && !showChecked) continue;
+                    if (pin.Automated && !showAutomated) continue;
+                    if (hideInFog && !InExploredArea(pin)) continue;
+                    // Automated pins group under the mod that wrote them; their owner ids are not player ids.
+                    string ownerKey = pin.Automated ? "mod:" + pin.Author : pin.OwnerId.ToString();
                     OwnerInfo owner;
-                    if (!owners.TryGetValue(pin.OwnerId, out owner))
+                    if (!owners.TryGetValue(ownerKey, out owner))
                     {
                         owner = new OwnerInfo();
-                        ResolveOwner(pin.OwnerId, pin.Author, owner);
-                        owners[pin.OwnerId] = owner;
-                        order.Add(pin.OwnerId);
+                        if (pin.Automated) owner.Name = "Automated: " + pin.Author;
+                        else ResolveOwner(pin.OwnerId, pin.Author, owner);
+                        owners[ownerKey] = owner;
+                        order.Add(ownerKey);
                     }
                     owner.Pins++;
                     j.BeginObject();
                     j.Prop("id", pin.Id);
-                    j.Prop("owner", pin.OwnerId.ToString());
+                    j.Prop("owner", ownerKey);
                     j.Prop("type", SharedMapData.KindName(pin.Type));
                     j.Prop("name", pin.Name);
                     j.Prop("x", pin.X, 1);
@@ -308,11 +322,11 @@ namespace ValheimWebMap
             j.EndArray();
 
             j.Key("owners").BeginArray();
-            foreach (long id in order)
+            foreach (string id in order)
             {
                 OwnerInfo owner = owners[id];
                 j.BeginObject();
-                j.Prop("id", id.ToString());
+                j.Prop("id", id);
                 j.Prop("name", owner.Name);
                 j.Prop("online", owner.Online);
                 j.Prop("pins", owner.Pins);
@@ -325,6 +339,11 @@ namespace ValheimWebMap
             j.EndArray();
             j.EndObject();
             return j.ToString();
+        }
+
+        private bool InExploredArea(MergedPin pin)
+        {
+            return _mask.Sample(pin.X, pin.Z) >= 0.5f;
         }
 
         private void ResolveOwner(long playerId, string author, OwnerInfo into)

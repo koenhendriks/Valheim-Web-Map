@@ -15,6 +15,8 @@ namespace ValheimWebMap
         public int Type;
         public float X, Z;
         public bool Checked;
+        /// <summary>Written by a server-side mod rather than by a player.</summary>
+        public bool Automated;
     }
 
     internal sealed class PinSnapshot
@@ -286,6 +288,7 @@ namespace ValheimWebMap
                         X = pin.X,
                         Z = pin.Z,
                         Checked = pin.Checked,
+                        Automated = !SharedMapData.IsPlayerAuthor(pin.Author),
                     });
                 }
             }
