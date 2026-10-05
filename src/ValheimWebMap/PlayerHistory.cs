@@ -21,6 +21,17 @@ namespace ValheimWebMap
         public DateTime Time;
         public int Day;
         public string Character;
+        /// <summary>Where the player died. Only recorded when they were sharing their position at the time.</summary>
+        public float? X;
+        public float? Z;
+    }
+
+    /// <summary>A character seen on this account, by the persistent id that cartography table pins carry as owner.</summary>
+    internal sealed class CharacterRecord
+    {
+        public long PlayerId;
+        public string Name;
+        public DateTime LastSeen;
     }
 
     internal sealed class PlayerRecord
@@ -29,6 +40,7 @@ namespace ValheimWebMap
         public string Name;
         public List<SessionRecord> Sessions = new List<SessionRecord>();
         public List<DeathRecord> Deaths = new List<DeathRecord>();
+        public List<CharacterRecord> Characters = new List<CharacterRecord>();
 
         [JsonIgnore]
         public double TotalSeconds
@@ -89,10 +101,12 @@ namespace ValheimWebMap
         private readonly HistoryOptions _options;
         private readonly HistoryFile _file;
         private readonly Dictionary<string, PlayerRecord> _byId = new Dictionary<string, PlayerRecord>();
+        private readonly Dictionary<long, CharacterRecord> _characters = new Dictionary<long, CharacterRecord>();
         private readonly Dictionary<long, Live> _live = new Dictionary<long, Live>();
         private readonly List<long> _gone = new List<long>();
         private volatile string _json;
         private bool _dirty;
+        private int _deathsVersion;
 
         public PlayerHistory(string path) : this(path, new HistoryOptions(), DateTime.UtcNow)
         {
@@ -105,9 +119,16 @@ namespace ValheimWebMap
             _file = Load(path) ?? new HistoryFile();
             if (options.RetentionDays > 0) Prune(now.AddDays(-options.RetentionDays));
             foreach (PlayerRecord p in _file.Players)
+            {
                 if (!string.IsNullOrEmpty(p.Id)) _byId[p.Id] = p;
+                foreach (CharacterRecord c in p.Characters)
+                    if (c.PlayerId != 0) _characters[c.PlayerId] = c;
+            }
             _json = BuildJson();
         }
+
+        /// <summary>Changes whenever a death with a position is recorded.</summary>
+        public int DeathsVersion => _deathsVersion;
 
         private void Prune(DateTime cutoff)
         {
@@ -159,18 +180,20 @@ namespace ValheimWebMap
                     changed = true;
                 }
                 live.Session.End = now;
+                if (p.HasCharacter && p.PlayerId != 0 && RememberCharacter(live.Player, p.PlayerId, p.Name, now)) changed = true;
 
                 if (p.HasCharacter && p.CharacterKey != live.Character)
                 {
                     // A new character while still connected means the old one was destroyed, which
-                    // outside a death only happens on logout, and logout drops the connection.
-                    if (live.Character.Length > 0 && !live.DeathCounted) { RecordDeath(live, now, day); changed = true; }
+                    // outside a death only happens on logout, and logout drops the connection. The
+                    // new character already stands at the spawn point, so there is no death position.
+                    if (live.Character.Length > 0 && !live.DeathCounted) { RecordDeath(live, now, day, null); changed = true; }
                     live.Character = p.CharacterKey;
                     live.DeathCounted = false;
                 }
                 if (p.Dead && !live.DeathCounted)
                 {
-                    RecordDeath(live, now, day);
+                    RecordDeath(live, now, day, p.Visible ? p : (PlayerEntry?)null);
                     changed = true;
                 }
             }
@@ -197,12 +220,90 @@ namespace ValheimWebMap
             }
         }
 
-        private void RecordDeath(Live live, DateTime now, int day)
+        private void RecordDeath(Live live, DateTime now, int day, PlayerEntry? at)
         {
             live.DeathCounted = true;
             if (!_options.TrackDeaths) return;
             live.Session.Deaths++;
-            live.Player.Deaths.Add(new DeathRecord { Time = now, Day = day, Character = live.Session.Character });
+            var death = new DeathRecord { Time = now, Day = day, Character = live.Session.Character };
+            if (at.HasValue)
+            {
+                death.X = at.Value.Position.x;
+                death.Z = at.Value.Position.z;
+                _deathsVersion++;
+            }
+            live.Player.Deaths.Add(death);
+        }
+
+        private bool RememberCharacter(PlayerRecord player, long playerId, string name, DateTime now)
+        {
+            CharacterRecord c;
+            if (_characters.TryGetValue(playerId, out c))
+            {
+                if (c.Name == name) return false;
+                c.Name = name;
+                c.LastSeen = now;
+                return true;
+            }
+            c = new CharacterRecord { PlayerId = playerId, Name = name, LastSeen = now };
+            _characters[playerId] = c;
+            player.Characters.Add(c);
+            return true;
+        }
+
+        public bool TryResolveCharacter(long playerId, out string name)
+        {
+            CharacterRecord c;
+            if (playerId != 0 && _characters.TryGetValue(playerId, out c))
+            {
+                name = c.Name;
+                return true;
+            }
+            name = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Matches a pin author such as "Steam_7656..." to an account key, which is the bare platform id,
+        /// and answers with the account's last used character name.
+        /// </summary>
+        public bool TryResolveAuthor(string author, out string name)
+        {
+            if (!string.IsNullOrEmpty(author))
+            {
+                foreach (PlayerRecord p in _file.Players)
+                {
+                    if (!string.IsNullOrEmpty(p.Id) && !p.Id.StartsWith("name:") && author.EndsWith("_" + p.Id, StringComparison.Ordinal))
+                    {
+                        name = p.Name;
+                        return true;
+                    }
+                }
+            }
+            name = null;
+            return false;
+        }
+
+        /// <summary>Writes deaths that have a position, most recent first per player, at most perPlayer each (0 = all).</summary>
+        public void WriteDeaths(JsonWriter j, int perPlayer)
+        {
+            foreach (PlayerRecord p in _file.Players)
+            {
+                int written = 0;
+                for (int i = p.Deaths.Count - 1; i >= 0 && (perPlayer <= 0 || written < perPlayer); i--)
+                {
+                    DeathRecord d = p.Deaths[i];
+                    if (!d.X.HasValue || !d.Z.HasValue) continue;
+                    j.BeginObject();
+                    j.Prop("name", d.Character ?? p.Name);
+                    j.Prop("day", d.Day);
+                    j.Prop("time", Iso(d.Time));
+                    j.Prop("x", d.X.Value, 1);
+                    j.Prop("z", d.Z.Value, 1);
+                    j.EndObject();
+                    written++;
+                }
+            }
         }
 
         private PlayerRecord RecordFor(string key, string name)
@@ -281,6 +382,7 @@ namespace ValheimWebMap
             {
                 if (p.Sessions == null) p.Sessions = new List<SessionRecord>();
                 if (p.Deaths == null) p.Deaths = new List<DeathRecord>();
+                if (p.Characters == null) p.Characters = new List<CharacterRecord>();
             }
             return file;
         }

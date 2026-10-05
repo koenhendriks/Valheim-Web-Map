@@ -17,6 +17,8 @@ namespace ValheimWebMap
         public bool HasCharacter;
         /// <summary>Identifies the spawned character (ZDOID as text); empty without one. A new value while connected means a respawn.</summary>
         public string CharacterKey;
+        /// <summary>The character's persistent player id, the value cartography table pins carry as owner. 0 when unknown.</summary>
+        public long PlayerId;
         public bool Dead;
         public Vector3 Position;
         public float Yaw;
@@ -53,6 +55,7 @@ namespace ValheimWebMap
                     Name = peer.m_playerName,
                     HasCharacter = hasCharacter,
                     CharacterKey = hasCharacter ? peer.m_characterID.ToString() : "",
+                    PlayerId = zdo != null ? zdo.GetLong(ZDOVars.s_playerID, 0L) : 0L,
                     Dead = zdo != null && zdo.GetBool(ZDOVars.s_dead, false),
                     Visible = hasCharacter && peer.m_publicRefPos,
                     Position = zdo != null ? zdo.GetPosition() : peer.m_refPos,
@@ -74,6 +77,7 @@ namespace ValheimWebMap
                     Name = host.GetPlayerName(),
                     HasCharacter = true,
                     CharacterKey = host.GetZDOID().ToString(),
+                    PlayerId = host.GetPlayerID(),
                     Dead = host.IsDead(),
                     Visible = visible,
                     Position = pos,
