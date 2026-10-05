@@ -25,7 +25,14 @@ namespace ValheimWebMap
         private readonly ExploredMask _mask;
         private readonly TileService _tiles;
         private readonly PlayerHistory _history;
+        private readonly CartographyTables _tables;
         private readonly string _epoch = DateTime.UtcNow.Ticks.ToString("x");
+        private volatile string _pinsJson = EmptyPins;
+        private int _pinsVersion;
+        private int _pinsBuiltFor = -1;
+        private int _deathsBuiltFor = -1;
+        private ulong _onlineBuiltFor;
+        public const string EmptyPins = "{\"version\":0,\"tables\":0,\"owners\":[],\"pins\":[],\"deaths\":[]}";
         private readonly List<PlayerEntry> _players = new List<PlayerEntry>();
         private readonly Thread _renderThread;
         private volatile bool _stop;
@@ -89,6 +96,12 @@ namespace ValheimWebMap
                     _log.LogWarning("Could not read " + historyPath + ": " + e.Message + ". Starting a new history.");
                     _history = new PlayerHistory(historyPath + ".new", options, DateTime.UtcNow);
                 }
+            }
+
+            if (cfg.ShowPins.Value || cfg.RevealFromCartographyTable.Value)
+            {
+                _tables = new CartographyTables(log, _mask, cfg.RevealFromCartographyTable.Value, cfg.ShowPins.Value,
+                    cfg.CartographyScanInterval.Value);
             }
 
             _stateJson = BuildState();
@@ -193,6 +206,7 @@ namespace ValheimWebMap
         /// <summary>Main thread, once per frame.</summary>
         public void Tick(float dt)
         {
+            _tables?.Tick(dt);
             _sinceUpdate += dt;
             _sinceSave += dt;
             if (_sinceUpdate >= _cfg.UpdateInterval.Value)
@@ -224,7 +238,113 @@ namespace ValheimWebMap
                 EnvMan env = EnvMan.instance;
                 _history.Update(_players, DateTime.UtcNow, env != null ? env.GetDay() : 0);
             }
+            RefreshPins();
             _stateJson = BuildState();
+        }
+
+        // Rebuilds the pins document only when table pins, death positions or the set of online
+        // characters changed; the last one matters because owner names and online flags come from it.
+        private void RefreshPins()
+        {
+            PinSnapshot snapshot = _tables != null ? _tables.Snapshot : PinSnapshot.Empty;
+            int deaths = _history != null ? _history.DeathsVersion : 0;
+            ulong online = 0;
+            foreach (PlayerEntry p in _players)
+                if (p.PlayerId != 0) online ^= Hash.Fnv1a64(p.PlayerId + ":" + p.Name);
+            if (snapshot.Version == _pinsBuiltFor && deaths == _deathsBuiltFor && online == _onlineBuiltFor) return;
+            _pinsBuiltFor = snapshot.Version;
+            _deathsBuiltFor = deaths;
+            _onlineBuiltFor = online;
+            _pinsVersion++;
+            _pinsJson = BuildPins(snapshot);
+        }
+
+        private sealed class OwnerInfo
+        {
+            public string Name;
+            public bool Online;
+            public int Pins;
+        }
+
+        private string BuildPins(PinSnapshot snapshot)
+        {
+            bool showPins = _cfg.ShowPins.Value;
+            bool showChecked = _cfg.ShowCheckedPins.Value;
+            bool showDeaths = _cfg.ShowDeathMarkers.Value && _cfg.TrackDeaths.Value && _history != null;
+
+            var owners = new Dictionary<long, OwnerInfo>();
+            var order = new List<long>();
+            var j = new JsonWriter(1024 + snapshot.Pins.Count * 160);
+            j.BeginObject();
+            j.Prop("version", _pinsVersion);
+            j.Prop("tables", snapshot.TableCount);
+
+            j.Key("pins").BeginArray();
+            if (showPins)
+            {
+                foreach (MergedPin pin in snapshot.Pins)
+                {
+                    if (pin.Checked && !showChecked) continue;
+                    OwnerInfo owner;
+                    if (!owners.TryGetValue(pin.OwnerId, out owner))
+                    {
+                        owner = new OwnerInfo();
+                        ResolveOwner(pin.OwnerId, pin.Author, owner);
+                        owners[pin.OwnerId] = owner;
+                        order.Add(pin.OwnerId);
+                    }
+                    owner.Pins++;
+                    j.BeginObject();
+                    j.Prop("id", pin.Id);
+                    j.Prop("owner", pin.OwnerId.ToString());
+                    j.Prop("type", SharedMapData.KindName(pin.Type));
+                    j.Prop("name", pin.Name);
+                    j.Prop("x", pin.X, 1);
+                    j.Prop("z", pin.Z, 1);
+                    j.Prop("checked", pin.Checked);
+                    j.EndObject();
+                }
+            }
+            j.EndArray();
+
+            j.Key("owners").BeginArray();
+            foreach (long id in order)
+            {
+                OwnerInfo owner = owners[id];
+                j.BeginObject();
+                j.Prop("id", id.ToString());
+                j.Prop("name", owner.Name);
+                j.Prop("online", owner.Online);
+                j.Prop("pins", owner.Pins);
+                j.EndObject();
+            }
+            j.EndArray();
+
+            j.Key("deaths").BeginArray();
+            if (showDeaths) _history.WriteDeaths(j, _cfg.DeathMarkersPerPlayer.Value);
+            j.EndArray();
+            j.EndObject();
+            return j.ToString();
+        }
+
+        private void ResolveOwner(long playerId, string author, OwnerInfo into)
+        {
+            foreach (PlayerEntry p in _players)
+            {
+                if (p.PlayerId == playerId && playerId != 0)
+                {
+                    into.Name = p.Name;
+                    into.Online = true;
+                    return;
+                }
+            }
+            string name;
+            if (_history != null && (_history.TryResolveCharacter(playerId, out name) || _history.TryResolveAuthor(author, out name)))
+            {
+                into.Name = name;
+                return;
+            }
+            into.Name = null;
         }
 
         private string BuildState()
@@ -240,6 +360,7 @@ namespace ValheimWebMap
             j.Prop("epoch", _epoch);
             j.Prop("mapId", atlas != null ? atlas.Id : 0);
             j.Prop("exploreVersion", _mask.Version);
+            j.Prop("pinsVersion", _pinsVersion);
             if (_cfg.ShowExploredPercent.Value) j.Prop("exploredPercent", _mask.ExploredPercent, 2);
             EnvMan env = EnvMan.instance;
             if (env != null && _cfg.ShowDayAndTime.Value)
@@ -284,6 +405,7 @@ namespace ValheimWebMap
 
         public string StateJson => _stateJson;
         public string HistoryJson => _history != null && _cfg.ShowHistory.Value ? _history.Json : "{\"players\":[]}";
+        public string PinsJson => _pinsJson;
 
         public void SaveIfDirty()
         {
@@ -314,6 +436,7 @@ namespace ValheimWebMap
         public void Dispose()
         {
             _stop = true;
+            _tables?.Dispose();
             SaveIfDirty();
         }
 

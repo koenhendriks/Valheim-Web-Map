@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 
@@ -89,10 +90,46 @@ namespace ValheimWebMap
             return 1;
         }
 
+        /// <summary>
+        /// Reveals many rectangles under one version increment. Rectangles outside the mask are
+        /// skipped rather than clamped: the in-game map reaches further out than this mask, and
+        /// clamping would paint the border cells.
+        /// </summary>
+        public int RevealRects(List<RectF> rects, int start, int count)
+        {
+            int revealed = 0;
+            int version = 0;
+            int end = Math.Min(start + count, rects.Count);
+            for (int n = start; n < end; n++)
+            {
+                RectF r = rects[n];
+                if (r.MaxX <= -_half || r.MinX >= _half || r.MaxZ <= -_half || r.MinZ >= _half) continue;
+                int i0 = Clamp((int)Math.Floor((r.MinX + _half) / _cell));
+                int i1 = Clamp((int)Math.Ceiling((r.MaxX + _half) / _cell) - 1);
+                int j0 = Clamp((int)Math.Floor((r.MinZ + _half) / _cell));
+                int j1 = Clamp((int)Math.Ceiling((r.MaxZ + _half) / _cell) - 1);
+                int here = 0;
+                for (int j = j0; j <= j1; j++)
+                    for (int i = i0; i <= i1; i++)
+                        here += Set(i, j);
+                if (here == 0) continue;
+                if (version == 0) version = Interlocked.Increment(ref _version);
+                Dirty = true;
+                StampRegions(r.MinX, r.MinZ, r.MaxX, r.MaxZ, version);
+                revealed += here;
+            }
+            return revealed;
+        }
+
         private void Touch(float minX, float minZ, float maxX, float maxZ)
         {
             int v = Interlocked.Increment(ref _version);
             Dirty = true;
+            StampRegions(minX, minZ, maxX, maxZ, v);
+        }
+
+        private void StampRegions(float minX, float minZ, float maxX, float maxZ, int v)
+        {
             int i0 = ClampRegion((int)Math.Floor((minX + _half) / _regionCell));
             int i1 = ClampRegion((int)Math.Floor((maxX + _half) / _regionCell));
             int j0 = ClampRegion((int)Math.Floor((minZ + _half) / _regionCell));

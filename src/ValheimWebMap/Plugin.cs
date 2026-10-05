@@ -16,7 +16,7 @@ namespace ValheimWebMap
         {
             _cfg = new PluginConfig(Config);
             _emptyState = new JsonWriter().BeginObject().Prop("world", (string)null).Prop("mapReady", false)
-                .Key("players").BeginArray().EndArray().EndObject().ToString();
+                .Prop("pinsVersion", 0).Key("players").BeginArray().EndArray().EndObject().ToString();
 
         }
 
@@ -121,6 +121,10 @@ namespace ValheimWebMap
             j.Prop("deathCounts", _cfg.ShowDeathCounts.Value && _cfg.TrackDeaths.Value && _cfg.TrackSessions.Value);
             j.Prop("dayTime", _cfg.ShowDayAndTime.Value);
             j.Prop("explored", _cfg.ShowExploredPercent.Value);
+            j.Prop("pins", _cfg.ShowPins.Value);
+            j.Prop("checkedPins", _cfg.ShowPins.Value && _cfg.ShowCheckedPins.Value);
+            j.Prop("deathMarkers", _cfg.ShowDeathMarkers.Value && _cfg.TrackDeaths.Value && _cfg.TrackSessions.Value);
+            j.Prop("tableReveal", _cfg.RevealFromCartographyTable.Value);
             j.EndObject();
             j.EndObject();
             return j.ToString();
@@ -136,6 +140,12 @@ namespace ValheimWebMap
         {
             MapSession s = _session;
             return s != null ? s.HistoryJson : "{\"players\":[]}";
+        }
+
+        public string PinsJson()
+        {
+            MapSession s = _session;
+            return s != null ? s.PinsJson : MapSession.EmptyPins;
         }
 
         public bool TryGetTile(int z, int x, int y, out byte[] png, out string etag)

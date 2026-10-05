@@ -13,6 +13,7 @@ namespace ValheimWebMap
         string InfoJson();
         string StateJson();
         string HistoryJson();
+        string PinsJson();
         bool TryGetTile(int z, int x, int y, out byte[] png, out string etag);
     }
 
@@ -135,6 +136,9 @@ namespace ValheimWebMap
                 case "/api/history":
                     SendText(req, res, _api.HistoryJson(), "application/json; charset=utf-8", "no-store", null);
                     return;
+                case "/api/pins":
+                    SendText(req, res, _api.PinsJson(), "application/json; charset=utf-8", "no-store", null);
+                    return;
                 case "/":
                     path = "/index.html";
                     break;
@@ -209,19 +213,12 @@ namespace ValheimWebMap
             {
                 if (!_etags.TryGetValue(name, out etag))
                 {
-                    etag = "\"" + Fnv1a64(data).ToString("x16") + "\"";
+                    etag = "\"" + Hash.Fnv1a64(data).ToString("x16") + "\"";
                     _etags[name] = etag;
                 }
             }
             string cache = name == "index.html" ? "no-cache" : "public, max-age=300";
             SendBytes(req, res, data, contentType, cache, etag);
-        }
-
-        private static ulong Fnv1a64(byte[] data)
-        {
-            ulong h = 14695981039346656037UL;
-            foreach (byte b in data) h = (h ^ b) * 1099511628211UL;
-            return h;
         }
 
         private static void SendText(HttpListenerRequest req, HttpListenerResponse res, string text, string contentType, string cacheControl, string etag)

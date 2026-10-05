@@ -35,6 +35,13 @@ namespace ValheimWebMap
         public readonly ConfigEntry<bool> ShowLastSeen;
         public readonly ConfigEntry<int> RecentSessions;
 
+        public readonly ConfigEntry<bool> RevealFromCartographyTable;
+        public readonly ConfigEntry<float> CartographyScanInterval;
+        public readonly ConfigEntry<bool> ShowPins;
+        public readonly ConfigEntry<bool> ShowCheckedPins;
+        public readonly ConfigEntry<bool> ShowDeathMarkers;
+        public readonly ConfigEntry<int> DeathMarkersPerPlayer;
+
         public PluginConfig(ConfigFile file)
         {
             Port = file.Bind("Web", "Port", 3000,
@@ -64,6 +71,16 @@ namespace ValheimWebMap
                     "The game generates zones a little further out than the map reveals. A zone is revealed only when " +
                     "all zones within this many zones of it are generated too, which trims that extra ring.",
                     new AcceptableValueRange<int>(0, 3)));
+
+            RevealFromCartographyTable = file.Bind("Exploration", "RevealFromCartographyTable", true,
+                "Lift the fog wherever the map shared on an in-world cartography table has been explored. " +
+                "Players who never share their position still contribute once they write to a table.");
+
+            CartographyScanInterval = file.Bind("CartographyTables", "ScanInterval", 30f,
+                new ConfigDescription(
+                    "Seconds between scans of the world for cartography tables. A scan is spread over several " +
+                    "frames and only tables whose contents changed are read again.",
+                    new AcceptableValueRange<float>(5f, 600f)));
 
             UpdateInterval = file.Bind("Players", "UpdateInterval", 1f,
                 new ConfigDescription("Seconds between player position samples.", new AcceptableValueRange<float>(0.25f, 10f)));
@@ -110,6 +127,17 @@ namespace ValheimWebMap
             RecentSessions = file.Bind("Display", "RecentSessions", 30,
                 new ConfigDescription("History: how many recent sessions to list per player. 0 hides the per-session list.",
                     new AcceptableValueRange<int>(0, 365)));
+
+            ShowPins = file.Bind("Display", "ShowPins", true,
+                "Show map markers shared on cartography tables, with a Markers tab to toggle them per player.");
+            ShowCheckedPins = file.Bind("Display", "ShowCheckedPins", true,
+                "Include markers that were crossed out on the table. The page has its own switch to hide them.");
+            ShowDeathMarkers = file.Bind("Display", "ShowDeathMarkers", true,
+                "Mark where players died, from the server's own death records. Only deaths of players who were " +
+                "sharing their position at the time are placed. Requires TrackDeaths.");
+            DeathMarkersPerPlayer = file.Bind("Display", "DeathMarkersPerPlayer", 5,
+                new ConfigDescription("How many of each player's most recent deaths to mark. 0 marks all of them.",
+                    new AcceptableValueRange<int>(0, 100)));
         }
     }
 }
