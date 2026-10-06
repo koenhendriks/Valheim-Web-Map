@@ -217,8 +217,9 @@ namespace ValheimWebMap
                     _etags[name] = etag;
                 }
             }
-            string cache = name == "index.html" ? "no-cache" : "public, max-age=300";
-            SendBytes(req, res, data, contentType, cache, etag);
+            // Always revalidate: the ETag makes that a 304 round trip, and a plugin update then shows
+            // up on the next page load instead of after a cache lifetime.
+            SendBytes(req, res, data, contentType, "no-cache", etag);
         }
 
         private static void SendText(HttpListenerRequest req, HttpListenerResponse res, string text, string contentType, string cacheControl, string etag)
