@@ -149,6 +149,7 @@ is hidden from everyone, not just from the page.
 | `ShowCheckedPins` | `true` | Include markers that were crossed out on the table. The page has its own switch too. |
 | `ShowAutomatedPins` | `false` | Also show markers written to tables by server-side mods such as AutoMapTables, grouped under the mod's name. |
 | `HidePinsInFog` | `true` | Hide markers that lie in unexplored territory. |
+| `PinMergeDistance` | `10` | Metres within which a generated marker (mod or vegvisir) replaces players' own markers for the same spot. `0` keeps every marker. |
 | `ShowDeathMarkers` | `true` | Mark where players died. Only deaths of players who were sharing their position at the time. |
 | `DeathMarkersPerPlayer` | `5` | How many of each player's most recent deaths to mark. `0` marks all. |
 
@@ -181,6 +182,12 @@ Pins carry the platform id of the player who shared them. Server-side mods that 
 themselves, such as AutoMapTables, put their plugin id there instead; those markers are left out
 unless `ShowAutomatedPins` is on. Markers in unexplored territory are also left out by default
 (`HidePinsInFog`), so a marker only appears once someone has actually been there.
+
+Such mods also drop their discoveries onto players' own maps, labelled with the game's location
+token (for example `$location_sunkenCrypt`), and players tend to mark the same crypt or vein by
+hand as well. Within `PinMergeDistance` metres of a generated marker, whether it came from a mod
+or from a vegvisir, only the generated marker is shown and the hand-placed duplicates are dropped.
+A `$` label is a reliable sign of a generated marker because the pin dialog cannot produce one.
 
 ## HTTP API
 
