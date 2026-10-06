@@ -100,6 +100,7 @@ jobs:
         id: publish
         if: github.ref == 'refs/heads/main' && env.TCLI_AUTH_TOKEN != ''
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.value }}
           RELEASED_NOW: ${{ steps.version.outputs.release }}
         run: |
@@ -113,9 +114,17 @@ jobs:
             echo "$VERSION is already on Thunderstore"
             exit 0
           fi
+          # When healing a release from an earlier run, upload the file attached to that release
+          # rather than this run's build, so Thunderstore and GitHub serve the same bytes.
+          package="dist/thunderstore/koenhendriks-ValheimWebMap-$VERSION.zip"
+          if [ "$RELEASED_NOW" != "true" ]; then
+            mkdir -p /tmp/release
+            gh release download "v$VERSION" --pattern "koenhendriks-ValheimWebMap-$VERSION.zip" --dir /tmp/release --clobber
+            package="/tmp/release/koenhendriks-ValheimWebMap-$VERSION.zip"
+          fi
           # Thunderstore occasionally answers 5xx while finalising an upload; try a few times.
           for attempt in 1 2 3 4; do
-            tcli publish --file "dist/thunderstore/koenhendriks-ValheimWebMap-$VERSION.zip" && exit 0
+            tcli publish --file "$package" && exit 0
             echo "publish attempt $attempt failed"
             sleep 30
             if curl -sf "https://thunderstore.io/api/experimental/package/koenhendriks/ValheimWebMap/$VERSION/" >/dev/null; then
