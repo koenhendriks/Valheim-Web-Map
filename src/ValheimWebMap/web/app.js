@@ -12,7 +12,7 @@
   var expanded = {};
 
   // Cartography table markers and death markers.
-  var pins = { owners: [], pins: [], deaths: [] };
+  var pins = { owners: [], pins: [], traders: [], deaths: [] };
   var lastPinsVersion = -1;
   var pinMarkers = {};
   var markerPrefs = loadMarkerPrefs();
@@ -71,7 +71,7 @@
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (btn) {
       btn.addEventListener('click', function () { showTab(btn.getAttribute('data-tab')); });
     });
-    var showMarkersTab = features.pins !== false || features.deathMarkers !== false;
+    var showMarkersTab = features.pins !== false || features.deathMarkers !== false || features.traders !== false;
     if (features.history === false) document.querySelector('.tab[data-tab="history"]').style.display = 'none';
     if (!showMarkersTab) document.querySelector('.tab[data-tab="markers"]').style.display = 'none';
     if (features.history === false && !showMarkersTab) {
@@ -142,7 +142,7 @@
       renderStatus(s);
       ensureTiles(s);
       renderPlayers(s.players || []);
-      if ((features.pins !== false || features.deathMarkers !== false) && s.pinsVersion !== lastPinsVersion) {
+      if ((features.pins !== false || features.deathMarkers !== false || features.traders !== false) && s.pinsVersion !== lastPinsVersion) {
         fetchPins(s.pinsVersion);
       }
     }).catch(function () {
@@ -354,12 +354,12 @@
   // --- cartography table markers ---------------------------------------------
 
   function loadMarkerPrefs() {
-    var prefs = { hiddenOwners: {}, pins: true, checked: true, deaths: true };
+    var prefs = { hiddenOwners: {}, pins: true, checked: true, traders: true, deaths: true };
     try {
       var saved = JSON.parse(localStorage.getItem('vwm.markers') || '{}');
       if (saved && typeof saved === 'object') {
         if (saved.hiddenOwners && typeof saved.hiddenOwners === 'object') prefs.hiddenOwners = saved.hiddenOwners;
-        ['pins', 'checked', 'deaths'].forEach(function (k) { if (typeof saved[k] === 'boolean') prefs[k] = saved[k]; });
+        ['pins', 'checked', 'traders', 'deaths'].forEach(function (k) { if (typeof saved[k] === 'boolean') prefs[k] = saved[k]; });
       }
     } catch (e) { /* storage unavailable: defaults */ }
     return prefs;
@@ -370,7 +370,7 @@
   }
 
   function setupMarkerFilters() {
-    var map_ = { 'f-pins': 'pins', 'f-checked': 'checked', 'f-deaths': 'deaths' };
+    var map_ = { 'f-pins': 'pins', 'f-checked': 'checked', 'f-traders': 'traders', 'f-deaths': 'deaths' };
     Object.keys(map_).forEach(function (id) {
       var box = $(id);
       box.checked = markerPrefs[map_[id]];
@@ -383,11 +383,12 @@
     if (features.pins === false) { $('f-pins').parentNode.classList.add('hidden'); $('f-checked-wrap').classList.add('hidden'); }
     if (features.checkedPins === false) $('f-checked-wrap').classList.add('hidden');
     if (features.deathMarkers === false) $('f-deaths-wrap').classList.add('hidden');
+    if (features.traders === false) $('f-traders-wrap').classList.add('hidden');
   }
 
   function fetchPins(version) {
     fetch('api/pins', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (p) {
-      pins = { owners: p.owners || [], pins: p.pins || [], deaths: p.deaths || [] };
+      pins = { owners: p.owners || [], pins: p.pins || [], traders: p.traders || [], deaths: p.deaths || [] };
       lastPinsVersion = version;
       renderOwners();
       renderPinMarkers();
@@ -403,7 +404,7 @@
       if (!!a.name !== !!b.name) return a.name ? -1 : 1;
       return b.pins - a.pins;
     });
-    $('no-pins').classList.toggle('hidden', owners.length > 0 || pins.deaths.length > 0);
+    $('no-pins').classList.toggle('hidden', owners.length > 0 || pins.deaths.length > 0 || pins.traders.length > 0);
     var frag = document.createDocumentFragment();
     owners.forEach(function (o) {
       var li = document.createElement('li');
@@ -449,6 +450,12 @@
         if (markerPrefs.hiddenOwners[p.owner]) return;
         if (p.checked && !markerPrefs.checked) return;
         wanted[p.id] = { x: p.x, z: p.z, cls: 'pin-' + p.type + (p.checked ? ' checked' : ''), label: prettyName(p.name), title: ownerOf(p.owner) + ' · ' + p.type };
+      });
+    }
+    if (features.traders !== false && markerPrefs.traders) {
+      pins.traders.forEach(function (t) {
+        var kind = /vendor|haldor/i.test(t.prefab) ? 'haldor' : /hildir/i.test(t.prefab) ? 'hildir' : /witch/i.test(t.prefab) ? 'bogwitch' : 'other';
+        wanted[t.id] = { x: t.x, z: t.z, cls: 'pin-trader pin-trader-' + kind, label: t.name, title: 'Trader' };
       });
     }
     if (features.deathMarkers !== false && markerPrefs.deaths) {

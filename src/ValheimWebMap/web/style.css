@@ -283,6 +283,36 @@ html, body {
 .pin-bed .pin-glyph { border-radius: 3px; }
 .pin-memorial, .pin-other { --pc: #b5b5b5; }
 .pin-memorial .pin-glyph, .pin-other .pin-glyph { border-radius: 3px; }
+/* Traders: twice the size of a normal marker, a tent shape with a coloured roof */
+.pin-trader .pin-glyph {
+  left: -16px;
+  top: -16px;
+  width: 32px;
+  height: 32px;
+  background: #f2e6c8;
+  clip-path: polygon(50% 0%, 100% 48%, 88% 48%, 88% 100%, 12% 100%, 12% 48%, 0% 48%);
+}
+.pin-trader .pin-glyph::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 48%;
+  background: var(--pc);
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+}
+.pin-trader .pin-glyph::after {
+  content: "";
+  position: absolute;
+  left: 38%; right: 38%; bottom: 0;
+  height: 36%;
+  background: #3a2a1a;
+}
+.pin-trader-haldor { --pc: #e0b35a; }
+.pin-trader-hildir { --pc: #ef8fc8; }
+.pin-trader-bogwitch { --pc: #7fbf6a; }
+.pin-trader-other { --pc: #b5b5b5; }
+.pin-trader .pin-label { top: 18px; font-size: 13px; font-weight: 600; }
+#map.labels-off .pin-trader .pin-label { display: block; }
 .pin-death { --pc: #1a1a1f; }
 .pin-death .pin-glyph { border-radius: 50%; border: 2px solid #f2f2f2; box-sizing: border-box; }
 .pin-death .pin-glyph::before {

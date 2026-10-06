@@ -42,6 +42,8 @@ namespace ValheimWebMap
         public readonly ConfigEntry<bool> ShowAutomatedPins;
         public readonly ConfigEntry<bool> HidePinsInFog;
         public readonly ConfigEntry<float> PinMergeDistance;
+        public readonly ConfigEntry<bool> ShowTraders;
+        public readonly ConfigEntry<string> TraderLocations;
         public readonly ConfigEntry<bool> ShowDeathMarkers;
         public readonly ConfigEntry<int> DeathMarkersPerPlayer;
 
@@ -146,6 +148,14 @@ namespace ValheimWebMap
                     "(AutoMapTables dungeons, ore and portals, vegvisir boss pins), only the generated marker is shown. " +
                     "0 keeps every marker.",
                     new AcceptableValueRange<float>(0f, 100f)));
+            ShowTraders = file.Bind("Display", "ShowTraders", true,
+                "Mark traders that players have found, with a larger marker and their own switch in the Markers tab. " +
+                "A trader counts as found once the game has placed it, which happens when a player comes near; " +
+                "HidePinsInFog and PinMergeDistance apply to traders as well.");
+            TraderLocations = file.Bind("Display", "TraderLocations",
+                "Vendor_BlackForest=Haldor,Hildir_camp=Hildir,BogWitch_Camp=Bog Witch",
+                "Location prefab names to treat as traders, with the label to show, separated by commas. " +
+                "Unknown names are reported in the log at startup.");
             ShowDeathMarkers = file.Bind("Display", "ShowDeathMarkers", true,
                 "Mark where players died, from the server's own death records. Only deaths of players who were " +
                 "sharing their position at the time are placed. Requires TrackDeaths.");

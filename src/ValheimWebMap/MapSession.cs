@@ -33,7 +33,19 @@ namespace ValheimWebMap
         private int _deathsBuiltFor = -1;
         private ulong _onlineBuiltFor;
         private ulong _fogBuiltFor;
-        public const string EmptyPins = "{\"version\":0,\"tables\":0,\"owners\":[],\"pins\":[],\"deaths\":[]}";
+        private ulong _tradersBuiltFor;
+        private readonly List<TraderMarker> _traders = new List<TraderMarker>();
+        private readonly Dictionary<string, string> _traderNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private bool _tradersLogged;
+
+        private sealed class TraderMarker
+        {
+            public string Id;
+            public string Prefab;
+            public string Name;
+            public float X, Z;
+        }
+        public const string EmptyPins = "{\"version\":0,\"tables\":0,\"owners\":[],\"pins\":[],\"traders\":[],\"deaths\":[]}";
         private readonly List<PlayerEntry> _players = new List<PlayerEntry>();
         private readonly Thread _renderThread;
         private volatile bool _stop;
@@ -97,6 +109,14 @@ namespace ValheimWebMap
                     _log.LogWarning("Could not read " + historyPath + ": " + e.Message + ". Starting a new history.");
                     _history = new PlayerHistory(historyPath + ".new", options, DateTime.UtcNow);
                 }
+            }
+
+            foreach (string entry in cfg.TraderLocations.Value.Split(','))
+            {
+                string[] kv = entry.Split(new[] { '=' }, 2);
+                string prefab = kv[0].Trim();
+                if (prefab.Length == 0) continue;
+                _traderNames[prefab] = kv.Length > 1 && kv[1].Trim().Length > 0 ? kv[1].Trim() : prefab;
             }
 
             if (cfg.ShowPins.Value || cfg.RevealFromCartographyTable.Value)
@@ -257,13 +277,74 @@ namespace ValheimWebMap
             if (_cfg.HidePinsInFog.Value)
                 foreach (MergedPin pin in snapshot.Pins)
                     if (InExploredArea(pin)) fog ^= Hash.Fnv1a64(pin.Id);
-            if (snapshot.Version == _pinsBuiltFor && deaths == _deathsBuiltFor && online == _onlineBuiltFor && fog == _fogBuiltFor) return;
+            ulong traders = CollectTraders();
+            if (snapshot.Version == _pinsBuiltFor && deaths == _deathsBuiltFor && online == _onlineBuiltFor
+                && fog == _fogBuiltFor && traders == _tradersBuiltFor) return;
             _pinsBuiltFor = snapshot.Version;
             _deathsBuiltFor = deaths;
             _onlineBuiltFor = online;
             _fogBuiltFor = fog;
+            _tradersBuiltFor = traders;
             _pinsVersion++;
             _pinsJson = BuildPins(snapshot);
+        }
+
+        /// <summary>
+        /// Traders the game would show on the map: placed locations (the zone was generated because
+        /// someone came near), optionally also required to lie in explored territory. Returns a
+        /// fingerprint of the result so the pins document is rebuilt only when it changes.
+        /// </summary>
+        private ulong CollectTraders()
+        {
+            _traders.Clear();
+            if (!_cfg.ShowTraders.Value || _traderNames.Count == 0) return 0;
+            ZoneSystem zs = ZoneSystem.instance;
+            if (zs == null || zs.m_locationInstances == null) return 0;
+
+            var present = _tradersLogged ? null : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            ulong fingerprint = 0;
+            foreach (ZoneSystem.LocationInstance loc in zs.m_locationInstances.Values)
+            {
+                if (loc.m_location == null) continue;
+                string prefab = loc.m_location.m_prefabName;
+                string name;
+                if (string.IsNullOrEmpty(prefab) || !_traderNames.TryGetValue(prefab, out name)) continue;
+                if (present != null) present.Add(prefab);
+                if (!(loc.m_location.m_iconAlways || loc.m_placed)) continue;
+                float x = loc.m_position.x, z = loc.m_position.z;
+                if (_cfg.HidePinsInFog.Value && _mask.Sample(x, z) < 0.5f) continue;
+                var marker = new TraderMarker
+                {
+                    Id = "trader:" + prefab + ":" + (int)Math.Round(x) + ":" + (int)Math.Round(z),
+                    Prefab = prefab,
+                    Name = name,
+                    X = x,
+                    Z = z,
+                };
+                _traders.Add(marker);
+                fingerprint ^= Hash.Fnv1a64(marker.Id);
+            }
+
+            if (present != null)
+            {
+                _tradersLogged = true;
+                foreach (KeyValuePair<string, string> kv in _traderNames)
+                {
+                    if (present.Contains(kv.Key)) continue;
+                    string hint = "";
+                    foreach (ZoneSystem.LocationInstance loc in zs.m_locationInstances.Values)
+                    {
+                        string candidate = loc.m_location != null ? loc.m_location.m_prefabName : null;
+                        if (!string.IsNullOrEmpty(candidate) && candidate.IndexOf(kv.Key.Split('_')[0], StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            hint = " (did you mean '" + candidate + "'?)";
+                            break;
+                        }
+                    }
+                    _log.LogWarning("Trader location '" + kv.Key + "' does not exist in this world" + hint);
+                }
+            }
+            return fingerprint;
         }
 
         private sealed class OwnerInfo
@@ -292,8 +373,13 @@ namespace ValheimWebMap
             if (showPins)
             {
                 Func<MergedPin, bool> displayable = pin =>
-                    (!pin.Checked || showChecked) && (!pin.Automated || showAutomated) && (!hideInFog || InExploredArea(pin));
-                HashSet<string> shown = PinMerger.Select(snapshot.Pins, displayable, _cfg.PinMergeDistance.Value);
+                    pin.Id.StartsWith("trader:") ||
+                    ((!pin.Checked || showChecked) && (!pin.Automated || showAutomated) && (!hideInFog || InExploredArea(pin)));
+                // Traders take part as generated markers so hand-placed pins next to them are dropped.
+                var candidates = new List<MergedPin>(snapshot.Pins);
+                foreach (TraderMarker t in _traders)
+                    candidates.Add(new MergedPin { Id = t.Id, Name = "$trader", Automated = true, Author = "", X = t.X, Z = t.Z });
+                HashSet<string> shown = PinMerger.Select(candidates, displayable, _cfg.PinMergeDistance.Value);
                 foreach (MergedPin pin in snapshot.Pins)
                 {
                     if (!shown.Contains(pin.Id)) continue;
@@ -331,6 +417,19 @@ namespace ValheimWebMap
                 j.Prop("name", owner.Name);
                 j.Prop("online", owner.Online);
                 j.Prop("pins", owner.Pins);
+                j.EndObject();
+            }
+            j.EndArray();
+
+            j.Key("traders").BeginArray();
+            foreach (TraderMarker t in _traders)
+            {
+                j.BeginObject();
+                j.Prop("id", t.Id);
+                j.Prop("name", t.Name);
+                j.Prop("prefab", t.Prefab);
+                j.Prop("x", t.X, 1);
+                j.Prop("z", t.Z, 1);
                 j.EndObject();
             }
             j.EndArray();
