@@ -41,6 +41,7 @@ namespace ValheimWebMap
         public readonly ConfigEntry<bool> ShowCheckedPins;
         public readonly ConfigEntry<bool> ShowAutomatedPins;
         public readonly ConfigEntry<bool> HidePinsInFog;
+        public readonly ConfigEntry<float> PinMergeDistance;
         public readonly ConfigEntry<bool> ShowDeathMarkers;
         public readonly ConfigEntry<int> DeathMarkersPerPlayer;
 
@@ -139,6 +140,12 @@ namespace ValheimWebMap
                 "players. They are grouped under the mod's name in the Markers tab.");
             HidePinsInFog = file.Bind("Display", "HidePinsInFog", true,
                 "Hide markers that lie in unexplored territory, so the map still only shows where players have been.");
+            PinMergeDistance = file.Bind("Display", "PinMergeDistance", 10f,
+                new ConfigDescription(
+                    "When a player's marker lies within this many metres of a marker the game or a mod generated " +
+                    "(AutoMapTables dungeons, ore and portals, vegvisir boss pins), only the generated marker is shown. " +
+                    "0 keeps every marker.",
+                    new AcceptableValueRange<float>(0f, 100f)));
             ShowDeathMarkers = file.Bind("Display", "ShowDeathMarkers", true,
                 "Mark where players died, from the server's own death records. Only deaths of players who were " +
                 "sharing their position at the time are placed. Requires TrackDeaths.");

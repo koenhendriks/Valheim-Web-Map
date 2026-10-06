@@ -125,6 +125,7 @@ namespace ValheimWebMap
             j.Prop("checkedPins", _cfg.ShowPins.Value && _cfg.ShowCheckedPins.Value);
             j.Prop("automatedPins", _cfg.ShowPins.Value && _cfg.ShowAutomatedPins.Value);
             j.Prop("pinsInFog", !_cfg.HidePinsInFog.Value);
+            j.Prop("pinMerge", _cfg.PinMergeDistance.Value > 0f);
             j.Prop("deathMarkers", _cfg.ShowDeathMarkers.Value && _cfg.TrackDeaths.Value && _cfg.TrackSessions.Value);
             j.Prop("tableReveal", _cfg.RevealFromCartographyTable.Value);
             j.EndObject();

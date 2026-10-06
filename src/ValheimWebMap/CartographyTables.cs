@@ -6,19 +6,6 @@ using BepInEx.Logging;
 
 namespace ValheimWebMap
 {
-    internal sealed class MergedPin
-    {
-        public string Id;
-        public long OwnerId;
-        public string Author;
-        public string Name;
-        public int Type;
-        public float X, Z;
-        public bool Checked;
-        /// <summary>Written by a server-side mod rather than by a player.</summary>
-        public bool Automated;
-    }
-
     internal sealed class PinSnapshot
     {
         public static readonly PinSnapshot Empty = new PinSnapshot { Pins = new List<MergedPin>() };
@@ -264,7 +251,7 @@ namespace ValheimWebMap
         private void PublishSnapshot()
         {
             var merged = new List<MergedPin>();
-            var byCell = new HashSet<long>();
+            var seen = new HashSet<string>();
             var uids = new List<ZDOID>(_tables.Keys);
             uids.Sort();
             int withData = 0;
@@ -274,10 +261,10 @@ namespace ValheimWebMap
                 if (state.HasData) withData++;
                 foreach (TablePin pin in state.Pins)
                 {
-                    // The game treats pins within a metre as the same pin; the lowest table id wins.
+                    // The same pin copied between tables appears once. Different pins on the same spot
+                    // (a mod's pin and a player's copy of it) both survive; PinMerger sorts those out.
                     int qx = (int)Math.Round(pin.X), qz = (int)Math.Round(pin.Z);
-                    long cell = ((long)qx << 32) ^ (uint)qz;
-                    if (!byCell.Add(cell)) continue;
+                    if (!seen.Add(qx + "|" + qz + "|" + pin.OwnerId + "|" + pin.Name)) continue;
                     merged.Add(new MergedPin
                     {
                         Id = Hash.Fnv1a64(pin.OwnerId + "|" + pin.Type + "|" + qx + "|" + qz).ToString("x16").Substring(4),

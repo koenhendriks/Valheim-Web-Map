@@ -127,6 +127,101 @@ namespace ValheimWebMap
         }
     }
 
+    internal sealed class MergedPin
+    {
+        public string Id;
+        public long OwnerId;
+        public string Author;
+        public string Name;
+        public int Type;
+        public float X, Z;
+        public bool Checked;
+        /// <summary>Written by a server-side mod rather than by a player.</summary>
+        public bool Automated;
+
+        /// <summary>
+        /// Generated rather than typed: either written by a mod, or labelled with a localisation
+        /// token such as "$location_sunkenCrypt" or "$enemy_eikthyr", which the pin dialog never
+        /// produces but mods and the game's own vegvisir discoveries do.
+        /// </summary>
+        public bool System => Automated || (Name != null && Name.StartsWith("$"));
+    }
+
+    /// <summary>
+    /// Picks the pins to show when players mark spots that a generated pin already marks: within
+    /// the merge distance, the generated pin wins and the hand-placed ones are dropped. Pins that
+    /// are not displayable never win and never claim, so a hidden mod pin leaves a player's copy alone.
+    /// </summary>
+    internal static class PinMerger
+    {
+        public static HashSet<string> Select(List<MergedPin> pins, Func<MergedPin, bool> displayable, float distance)
+        {
+            var shown = new HashSet<string>();
+            var candidates = new List<MergedPin>();
+            foreach (MergedPin pin in pins)
+                if (displayable(pin)) candidates.Add(pin);
+            if (distance <= 0f)
+            {
+                foreach (MergedPin pin in candidates) shown.Add(pin.Id);
+                return shown;
+            }
+
+            var buckets = new Dictionary<long, List<MergedPin>>();
+            foreach (MergedPin pin in candidates)
+            {
+                long key = BucketKey(pin.X, pin.Z, distance);
+                List<MergedPin> list;
+                if (!buckets.TryGetValue(key, out list)) buckets[key] = list = new List<MergedPin>();
+                list.Add(pin);
+            }
+
+            var systems = new List<MergedPin>();
+            foreach (MergedPin pin in candidates)
+                if (pin.System) systems.Add(pin);
+            systems.Sort((a, b) =>
+            {
+                if (a.Automated != b.Automated) return a.Automated ? -1 : 1;
+                return string.CompareOrdinal(a.Id, b.Id);
+            });
+
+            var claimed = new HashSet<string>();
+            float d2 = distance * distance;
+            foreach (MergedPin winner in systems)
+            {
+                if (claimed.Contains(winner.Id)) continue;
+                shown.Add(winner.Id);
+                claimed.Add(winner.Id);
+                int bx = (int)Math.Floor(winner.X / distance), bz = (int)Math.Floor(winner.Z / distance);
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dz = -1; dz <= 1; dz++)
+                    {
+                        List<MergedPin> list;
+                        if (!buckets.TryGetValue(Pack(bx + dx, bz + dz), out list)) continue;
+                        foreach (MergedPin other in list)
+                        {
+                            if (claimed.Contains(other.Id)) continue;
+                            float ox = other.X - winner.X, oz = other.Z - winner.Z;
+                            if (ox * ox + oz * oz <= d2) claimed.Add(other.Id);
+                        }
+                    }
+            }
+
+            foreach (MergedPin pin in candidates)
+                if (!claimed.Contains(pin.Id)) shown.Add(pin.Id);
+            return shown;
+        }
+
+        private static long BucketKey(float x, float z, float size)
+        {
+            return Pack((int)Math.Floor(x / size), (int)Math.Floor(z / size));
+        }
+
+        private static long Pack(int bx, int bz)
+        {
+            return ((long)bx << 32) ^ (uint)bz;
+        }
+    }
+
     internal static class ExploredRuns
     {
         /// <summary>

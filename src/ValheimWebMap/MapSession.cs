@@ -291,11 +291,12 @@ namespace ValheimWebMap
             j.Key("pins").BeginArray();
             if (showPins)
             {
+                Func<MergedPin, bool> displayable = pin =>
+                    (!pin.Checked || showChecked) && (!pin.Automated || showAutomated) && (!hideInFog || InExploredArea(pin));
+                HashSet<string> shown = PinMerger.Select(snapshot.Pins, displayable, _cfg.PinMergeDistance.Value);
                 foreach (MergedPin pin in snapshot.Pins)
                 {
-                    if (pin.Checked && !showChecked) continue;
-                    if (pin.Automated && !showAutomated) continue;
-                    if (hideInFog && !InExploredArea(pin)) continue;
+                    if (!shown.Contains(pin.Id)) continue;
                     // Automated pins group under the mod that wrote them; their owner ids are not player ids.
                     string ownerKey = pin.Automated ? "mod:" + pin.Author : pin.OwnerId.ToString();
                     OwnerInfo owner;
