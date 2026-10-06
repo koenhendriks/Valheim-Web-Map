@@ -149,7 +149,9 @@ is hidden from everyone, not just from the page.
 | `ShowCheckedPins` | `true` | Include markers that were crossed out on the table. The page has its own switch too. |
 | `ShowAutomatedPins` | `false` | Also show markers written to tables by server-side mods such as AutoMapTables, grouped under the mod's name. |
 | `HidePinsInFog` | `true` | Hide markers that lie in unexplored territory. |
-| `PinMergeDistance` | `10` | Metres within which a generated marker (mod or vegvisir) replaces players' own markers for the same spot. `0` keeps every marker. |
+| `PinMergeDistance` | `10` | Metres within which a generated marker (mod, vegvisir or trader) replaces players' own markers for the same spot. `0` keeps every marker. |
+| `ShowTraders` | `true` | Larger markers for traders players have found, with their own switch in the Markers tab. |
+| `TraderLocations` | `Vendor_BlackForest=Haldor,Hildir_camp=Hildir,BogWitch_Camp=Bog Witch` | Location prefabs that count as traders and the label to show. Unknown names are reported in the log. |
 | `ShowDeathMarkers` | `true` | Mark where players died. Only deaths of players who were sharing their position at the time. |
 | `DeathMarkersPerPlayer` | `5` | How many of each player's most recent deaths to mark. `0` marks all. |
 
@@ -189,6 +191,14 @@ hand as well. Within `PinMergeDistance` metres of a generated marker, whether it
 or from a vegvisir, only the generated marker is shown and the hand-placed duplicates are dropped.
 A `$` label is a reliable sign of a generated marker because the pin dialog cannot produce one.
 
+### Traders
+
+Haldor, Hildir and the Bog Witch get a marker twice the usual size once a player has found them.
+"Found" follows the game's own rule for showing a trader icon: the location has been placed, which
+only happens when someone came close enough for its zone to be generated. With `HidePinsInFog` the
+spot must also be explored. Player markers within `PinMergeDistance` of a trader are dropped, and
+the Markers tab has a separate Traders switch.
+
 ## HTTP API
 
 | Path | Content |
@@ -197,7 +207,7 @@ A `$` label is a reliable sign of a generated marker because the pin dialog cann
 | `GET /api/info` | World name, map extent, zoom limits. |
 | `GET /api/state` | Render progress, exploration version, in-game day and time, online players with session start and death counts. |
 | `GET /api/history` | Per player: session count, total play time, deaths, last seen and the 30 most recent sessions. |
-| `GET /api/pins` | Cartography table markers (`pins`, `owners`) and death markers (`deaths`). `pinsVersion` in `/api/state` changes when this does. |
+| `GET /api/pins` | Cartography table markers (`pins`, `owners`), traders (`traders`) and death markers (`deaths`). `pinsVersion` in `/api/state` changes when this does. |
 | `GET /tiles/{z}/{x}/{y}.png` | 256 px map tiles with fog applied. |
 
 The world seed is deliberately not exposed.
