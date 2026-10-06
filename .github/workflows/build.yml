@@ -113,7 +113,17 @@ jobs:
             echo "$VERSION is already on Thunderstore"
             exit 0
           fi
-          tcli publish --file "dist/thunderstore/koenhendriks-ValheimWebMap-$VERSION.zip"
+          # Thunderstore occasionally answers 5xx while finalising an upload; try a few times.
+          for attempt in 1 2 3 4; do
+            tcli publish --file "dist/thunderstore/koenhendriks-ValheimWebMap-$VERSION.zip" && exit 0
+            echo "publish attempt $attempt failed"
+            sleep 30
+            if curl -sf "https://thunderstore.io/api/experimental/package/koenhendriks/ValheimWebMap/$VERSION/" >/dev/null; then
+              echo "$VERSION turned up on Thunderstore after all"
+              exit 0
+            fi
+          done
+          exit 1
 
       # Confirms the version is really downloadable: fetches the package from Thunderstore (with
       # retries, since a fresh upload takes a moment to propagate) and checks that it carries this
